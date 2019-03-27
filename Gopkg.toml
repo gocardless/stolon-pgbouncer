@@ -3,6 +3,10 @@
   unused-packages = true
 
 [[constraint]]
+  name = "github.com/gocardless/pgsql-cluster-manager"
+  branch = "master"
+
+[[constraint]]
   name = "github.com/alecthomas/kingpin"
   version = "2.2.6"
 
