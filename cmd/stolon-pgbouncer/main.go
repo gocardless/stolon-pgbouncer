@@ -39,33 +39,61 @@ var (
 	metricsAddress = app.Flag("metrics-address", "Address to bind HTTP metrics listener").Default("127.0.0.1").String()
 	metricsPort    = app.Flag("metrics-port", "Port to bind HTTP metrics listener").Default("9446").Uint16()
 
-	// Stolon compatible flags
-	clusterName           = app.Flag("cluster-name", "Name of the stolon cluster").Required().String()
-	storeBackend          = app.Flag("store-backend", "Store backend provider").Default("etcdv3").String()
-	storePrefix           = app.Flag("store-prefix", "Store prefix").Default("stolon/cluster").String()
-	storeEndpoints        = app.Flag("store-endpoints", "Comma delimited list of store endpoints").Default("http://127.0.0.1:2379").String()
-	storeTimeout          = app.Flag("store-timeout", "Timeout for store operations").Default("3s").Duration()
-	storeDialTimeout      = app.Flag("store-dial-timeout", "Timeout when connecting to store").Default("3s").Duration()
-	storeKeepaliveTime    = app.Flag("store-keepalive-time", "Time after which client pings server to check transport").Default("30s").Duration()
-	storeKeepaliveTimeout = app.Flag("store-keepalive-timeout", "Timeout for store keepalive probe").Default("5s").Duration()
+	supervise                           = app.Command("supervise", "Manages local PgBouncer")
+	superviseStolonOptions              = newStolonOptions(supervise)
+	supervisePgBouncerOptions           = newPgBouncerOptions(supervise)
+	supervisePollInterval               = supervise.Flag("poll-interval", "Store poll interval").Default("1m").Duration()
+	supervisePgBouncerTimeout           = supervise.Flag("pgbouncer-timeout", "Timeout for PgBouncer operations").Default("5s").Duration()
+	supervisePgBouncerRetryTimeout      = supervise.Flag("pgbouncer-retry-timeout", "Retry failed PgBouncer operations at this interval").Default("5s").Duration()
+	superviseChildProcess               = supervise.Flag("enable-child-process", "Manage PgBouncer as a child process").Default("false").Bool()
+	childProcessTerminationGracePeriod  = supervise.Flag("termination-grace-period", "Pause before rejecting new PgBouncer connections (on shutdown)").Default("5s").Duration()
+	childProcessTerminationPollInterval = supervise.Flag("termination-poll-interval", "Poll PgBouncer for outstanding connections at this rate").Default("10s").Duration()
 
-	supervise                        = app.Command("supervise", "Manages local PgBouncer")
-	superviseExecPgBouncer           = supervise.Flag("exec-pgbouncer", "stolon-pgbouncer will run PgBouncer as a child process").Default("false").Bool()
-	supervisePollInterval            = supervise.Flag("poll-interval", "Store poll interval").Default("1m").Duration()
-	superviseUser                    = supervise.Flag("pgbouncer-user", "Admin user of PgBouncer").Default("pgbouncer").String()
-	supervisePassword                = supervise.Flag("pgbouncer-password", "Password for admin user").Default("").String()
-	superviseDatabase                = supervise.Flag("pgbouncer-database", "PgBouncer special database (inadvisable to change)").Default("pgbouncer").String()
-	superviseSocketDir               = supervise.Flag("pgbouncer-socket-dir", "Directory in which the unix socket resides").Default("/var/run/postgresql").String()
-	supervisePort                    = supervise.Flag("pgbouncer-port", "Directory in which the unix socket resides").Default("6432").String()
-	superviseConfigFile              = supervise.Flag("pgbouncer-config-file", "Path to PgBouncer config file").Default("/etc/pgbouncer/pgbouncer.ini").String()
-	superviseConfigTemplateFile      = supervise.Flag("pgbouncer-config-template-file", "Path to PgBouncer config template file").Default("/etc/pgbouncer/pgbouncer.ini.template").String()
-	supervisePgBouncerTimeout        = supervise.Flag("pgbouncer-timeout", "Timeout for PgBouncer operations").Default("5s").Duration()
-	superviseRetryTimeout            = supervise.Flag("pgbouncer-retry-timeout", "Retry failed PgBouncer operations at this interval").Default("5s").Duration()
-	superviseTerminationGracePeriod  = supervise.Flag("termination-grace-period", "Pause before rejecting new PgBouncer connections (on shutdown)").Default("5s").Duration()
-	superviseTerminationPollInterval = supervise.Flag("termination-poll-interval", "Poll PgBouncer for outstanding connections at this rate").Default("10s").Duration()
+	pauser                 = app.Command("pauser", "Serve the PgBouncer pause API")
+	pauserPgBouncerOptions = newPgBouncerOptions(pauser)
+	pauserBindAddress      = supervise.Flag("bind-address", "Listen address for the pause API").Default(":8080").String()
 
-	failover = app.Command("failover", "Run a zero-downtime failover of the Postgres primary")
+	failover              = app.Command("failover", "Run a zero-downtime failover of the Postgres primary")
+	failoverStolonOptions = newStolonOptions(failover)
 )
+
+type stolonOptions struct {
+	ClusterName, Backend, Prefix, Endpoints               string
+	Timeout, DialTimeout, KeepaliveTime, KeepaliveTimeout time.Duration
+}
+
+func newStolonOptions(cmd *kingpin.CmdClause) *stolonOptions {
+	opt := &stolonOptions{}
+
+	cmd.Flag("cluster-name", "Name of the stolon cluster").Default("").StringVar(&opt.ClusterName)
+	cmd.Flag("store-backend", "Store backend provider").Default("etcdv3").StringVar(&opt.Backend)
+	cmd.Flag("store-prefix", "Store prefix").Default("stolon/cluster").StringVar(&opt.Prefix)
+	cmd.Flag("store-endpoints", "Comma delimited list of store endpoints").Default("http://127.0.0.1:2379").StringVar(&opt.Endpoints)
+	cmd.Flag("store-timeout", "Timeout for store operations").Default("3s").DurationVar(&opt.Timeout)
+	cmd.Flag("store-dial-timeout", "Timeout when connecting to store").Default("3s").DurationVar(&opt.DialTimeout)
+	cmd.Flag("store-keepalive-time", "Time after which client pings server to check transport").Default("30s").DurationVar(&opt.KeepaliveTime)
+	cmd.Flag("store-keepalive-timeout", "Timeout for store keepalive probe").Default("5s").DurationVar(&opt.KeepaliveTimeout)
+
+	return opt
+}
+
+type pgBouncerOptions struct {
+	User, Password, Database, SocketDir, Port, ConfigFile, ConfigTemplateFile string
+}
+
+func newPgBouncerOptions(cmd *kingpin.CmdClause) *pgBouncerOptions {
+	opt := &pgBouncerOptions{}
+
+	cmd.Flag("pgbouncer-user", "Admin user of PgBouncer").Default("pgbouncer").StringVar(&opt.User)
+	cmd.Flag("pgbouncer-password", "Password for admin user").Default("").StringVar(&opt.Password)
+	cmd.Flag("pgbouncer-database", "PgBouncer special database (inadvisable to change)").Default("pgbouncer").StringVar(&opt.Database)
+	cmd.Flag("pgbouncer-socket-dir", "Directory in which the unix socket resides").Default("/var/run/postgresql").StringVar(&opt.SocketDir)
+	cmd.Flag("pgbouncer-port", "Directory in which the unix socket resides").Default("6432").StringVar(&opt.Port)
+	cmd.Flag("pgbouncer-config-file", "Path to PgBouncer config file").Default("/etc/pgbouncer/pgbouncer.ini").StringVar(&opt.ConfigFile)
+	cmd.Flag("pgbouncer-config-template-file", "Path to PgBouncer config template file").Default("/etc/pgbouncer/pgbouncer.ini.template").StringVar(&opt.ConfigTemplateFile)
+
+	return opt
+}
 
 var (
 	ClusterIdentifier = prometheus.NewGaugeVec(
@@ -145,23 +173,6 @@ func main() {
 		logger = level.NewFilter(logger, level.AllowInfo())
 	}
 
-	if *storeBackend != "etcdv3" {
-		kingpin.Fatalf("unsupported store backend: %s", *storeBackend)
-	}
-
-	client, err := clientv3.New(
-		clientv3.Config{
-			Endpoints:            strings.Split(*storeEndpoints, ","),
-			DialTimeout:          *storeDialTimeout,
-			DialKeepAliveTime:    *storeKeepaliveTime,
-			DialKeepAliveTimeout: *storeKeepaliveTimeout,
-		},
-	)
-
-	if err != nil {
-		kingpin.Fatalf("failed to connect to etcd: %s", err)
-	}
-
 	go func() {
 		logger.Log("event", "metrics.listen", "address", *metricsAddress, "port", *metricsPort)
 		http.Handle("/metrics", promhttp.Handler())
@@ -176,112 +187,101 @@ func main() {
 		ShutdownSeconds.Set(float64(time.Now().Unix()))
 	}()
 
-	// Set any metrics that expose config flags
-	ClusterIdentifier.WithLabelValues(*storePrefix, *clusterName).Set(
-		md5float([]byte(fmt.Sprintf("%s/%s", *storePrefix, *clusterName))),
-	)
-	StorePollInterval.Set(float64(*supervisePollInterval))
-
 	switch command {
 	case supervise.FullCommand():
 		var g run.Group
 
-		pgBouncer := &pgbouncer.PgBouncer{
-			ConfigFile:         *superviseConfigFile,
-			ConfigTemplateFile: *superviseConfigTemplateFile,
-			Executor: pgbouncer.AuthorizedExecutor{
-				User:      *superviseUser,
-				Password:  *supervisePassword,
-				Database:  *superviseDatabase,
-				SocketDir: *superviseSocketDir,
-				Port:      *supervisePort,
-			},
-		}
+		client := mustStore(superviseStolonOptions)
+		pgBouncer := mustPgBouncer(supervisePgBouncerOptions)
+		stopt := superviseStolonOptions
 
-		{
-			var logger = kitlog.With(logger, "component", "pgbouncer.exec")
+		ClusterIdentifier.
+			WithLabelValues(stopt.Prefix, stopt.ClusterName).
+			Set(md5float(stopt.Prefix + stopt.ClusterName))
+		StorePollInterval.Set(float64(*supervisePollInterval))
 
-			if !*superviseExecPgBouncer {
-				logger.Log("msg", "not exec'ing PgBouncer- assuming external management")
-			} else {
-				if err := pgBouncer.GenerateConfig("0.0.0.0"); err != nil {
-					kingpin.Fatalf("failed to generate initial PgBouncer config: %v", err)
-				}
+		if !*superviseChildProcess {
+			logger.Log("msg", "not exec'ing PgBouncer- assuming external management")
+		} else {
+			var logger = kitlog.With(logger, "component", "pgbouncer.child")
 
-				cmdCtx, cmdCancel := context.WithCancel(context.Background())
+			if err := pgBouncer.GenerateConfig("0.0.0.0"); err != nil {
+				kingpin.Fatalf("failed to generate initial PgBouncer config: %v", err)
+			}
 
-				cmd := exec.CommandContext(cmdCtx, "pgbouncer", *superviseConfigFile)
-				cmd.Stderr = os.Stderr
+			cmdCtx, cmdCancel := context.WithCancel(context.Background())
 
-				// Termination handler for PgBouncer. Ensures we only quit PgBouncer once all
-				// connections have finished their work.
-				g.Add(cmd.Run, func(error) {
-					// Whatever happens, once we exit this block we want to terminate the PgBouncer
-					// process.
-					defer cmdCancel()
+			cmd := exec.CommandContext(cmdCtx, "pgbouncer", supervisePgBouncerOptions.ConfigFile)
+			cmd.Stderr = os.Stderr
 
-					logger.Log("event", "termination_grace_period", "msg", "waiting for grace period")
-					time.Sleep(*superviseTerminationGracePeriod)
+			// Termination handler for PgBouncer. Ensures we only quit PgBouncer once all
+			// connections have finished their work.
+			g.Add(cmd.Run, func(error) {
+				// Whatever happens, once we exit this block we want to terminate the PgBouncer
+				// process.
+				defer cmdCancel()
 
-					logger.Log("event", "disable", "msg", "disabling new PgBouncer connections")
-					{
-						ctx, cancel := context.WithTimeout(context.Background(), *supervisePgBouncerTimeout)
-						defer cancel()
+				logger.Log("event", "termination_grace_period", "msg", "waiting for grace period")
+				time.Sleep(*childProcessTerminationGracePeriod)
 
-						if err := pgBouncer.Disable(ctx); err != nil {
-							logger.Log("error", err, "msg", "failed to disable PgBouncer")
-							return
-						}
-					}
-
-				PollConnections:
-
+				logger.Log("event", "disable", "msg", "disabling new PgBouncer connections")
+				{
 					ctx, cancel := context.WithTimeout(context.Background(), *supervisePgBouncerTimeout)
 					defer cancel()
 
-					dbs, err := pgBouncer.ShowDatabases(ctx)
-					if err != nil {
-						logger.Log("event", "pgbouncer.error", "error", err, "msg", "could not contact PgBouncer")
-						goto PollConnections
+					if err := pgBouncer.Disable(ctx); err != nil {
+						logger.Log("error", err, "msg", "failed to disable PgBouncer")
+						return
 					}
+				}
 
-					var currentConnections = int64(0)
-					for _, db := range dbs {
-						currentConnections += db.CurrentConnections
-						if db.CurrentConnections > 0 {
-							logger.Log("event", "outstanding_connections", "database", db.Name, "count", db.CurrentConnections)
-						}
+			PollConnections:
+
+				ctx, cancel := context.WithTimeout(context.Background(), *supervisePgBouncerTimeout)
+				defer cancel()
+
+				dbs, err := pgBouncer.ShowDatabases(ctx)
+				if err != nil {
+					logger.Log("event", "pgbouncer.error", "error", err, "msg", "could not contact PgBouncer")
+					goto PollConnections
+				}
+
+				var currentConnections = int64(0)
+				for _, db := range dbs {
+					currentConnections += db.CurrentConnections
+					if db.CurrentConnections > 0 {
+						logger.Log("event", "outstanding_connections", "database", db.Name, "count", db.CurrentConnections)
 					}
+				}
 
-					OutstandingConnections.Set(float64(currentConnections))
+				OutstandingConnections.Set(float64(currentConnections))
 
-					if currentConnections > 0 {
-						logger.Log("event", "shutdown_pending", "total", currentConnections,
-							"msg", "waiting for outstanding connections to complete before terminating PgBouncer")
-						time.Sleep(*superviseTerminationPollInterval)
-						goto PollConnections
-					}
+				if currentConnections > 0 {
+					logger.Log("event", "shutdown_pending", "total", currentConnections,
+						"msg", "waiting for outstanding connections to complete before terminating PgBouncer")
+					time.Sleep(*childProcessTerminationPollInterval)
+					goto PollConnections
+				}
 
-					logger.Log("event", "idle", "msg", "no more connections in PgBouncer, shutting down")
-				})
-			}
+				logger.Log("event", "idle", "msg", "no more connections in PgBouncer, shutting down")
+			})
 		}
 
 		{
-			var logger = kitlog.With(logger, "component", "pgbouncer.supervise")
+			var logger = kitlog.With(logger, "component", "pgbouncer.watch")
 
 			streamOptions := etcd.StreamOptions{
 				Ctx:          ctx,
-				GetTimeout:   *storeTimeout,
+				GetTimeout:   stopt.Timeout,
 				PollInterval: *supervisePollInterval,
 				Keys: []string{
-					fmt.Sprintf("%s/%s/clusterdata", *storePrefix, *clusterName),
+					fmt.Sprintf("%s/%s/clusterdata", stopt.Prefix, stopt.ClusterName),
 				},
 			}
 
 			retryFoldOptions := streams.RetryFoldOptions{
 				Ctx:      ctx,
-				Interval: *superviseRetryTimeout,
+				Interval: *supervisePgBouncerRetryTimeout,
 				Timeout:  *supervisePgBouncerTimeout,
 			}
 
@@ -326,7 +326,7 @@ func main() {
 
 							// Set metrics that power alerts. These values are only set when we've
 							// succeeded in reloading PgBouncer.
-							HostHash.Set(md5float([]byte(masterAddress)))
+							HostHash.Set(md5float(masterAddress))
 							LastReloadSeconds.Set(float64(time.Now().Unix()))
 
 							return nil
@@ -338,13 +338,10 @@ func main() {
 		}
 
 		if err := g.Run(); err != nil {
-			logger.Log("error", err.Error(), "msg", "proxy failed, exiting with error")
+			logger.Log("error", err.Error(), "msg", "exiting with error")
 		}
 
 		logger.Log("event", "shutdown")
-
-	case failover.FullCommand():
-		panic("not implemented")
 	}
 }
 
@@ -361,6 +358,41 @@ func versionStanza() string {
 		"stolon-pgbouncer Version: %v\nGit SHA: %v\nGo Version: %v\nGo OS/Arch: %v/%v\nBuilt at: %v",
 		Version, Commit, GoVersion, runtime.GOOS, runtime.GOARCH, Date,
 	)
+}
+
+func mustPgBouncer(opt *pgBouncerOptions) *pgbouncer.PgBouncer {
+	return &pgbouncer.PgBouncer{
+		ConfigFile:         opt.ConfigFile,
+		ConfigTemplateFile: opt.ConfigTemplateFile,
+		Executor: pgbouncer.AuthorizedExecutor{
+			User:      opt.User,
+			Password:  opt.Password,
+			Database:  opt.Database,
+			SocketDir: opt.SocketDir,
+			Port:      opt.Port,
+		},
+	}
+}
+
+func mustStore(opt *stolonOptions) *clientv3.Client {
+	if opt.Backend != "etcdv3" {
+		kingpin.Fatalf("unsupported store backend: %s", opt.Backend)
+	}
+
+	client, err := clientv3.New(
+		clientv3.Config{
+			Endpoints:            strings.Split(opt.Endpoints, ","),
+			DialTimeout:          opt.DialTimeout,
+			DialKeepAliveTime:    opt.KeepaliveTime,
+			DialKeepAliveTimeout: opt.KeepaliveTimeout,
+		},
+	)
+
+	if err != nil {
+		kingpin.Fatalf("failed to connect to etcd: %s", err)
+	}
+
+	return client
 }
 
 // setupSignalHandler is similar to the community provided functions, but follows a more
@@ -387,8 +419,8 @@ func setupSignalHandler() (context.Context, func()) {
 //
 // We use the first 48 bits of the md5 hash as the float64 specification has a 53 bit
 // mantissa.
-func md5float(content []byte) float64 {
-	sum := md5.Sum(content)
+func md5float(content string) float64 {
+	sum := md5.Sum([]byte(content))
 	var bytes = make([]byte, 8)
 	copy(bytes, sum[0:6])
 	return float64(binary.LittleEndian.Uint64(bytes))
