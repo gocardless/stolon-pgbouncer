@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"fmt"
 	"html/template"
 	"io/ioutil"
 	"os"
@@ -82,7 +83,8 @@ func (b *PgBouncer) createTemplate() (*template.Template, error) {
 }
 
 type Database struct {
-	Name, Host, Port string
+	Name, Host, Port   string
+	CurrentConnections int64
 }
 
 // ShowDatabase extracts information from the SHOW DATABASE PgBouncer command, selecting
@@ -114,6 +116,7 @@ func (b *PgBouncer) ShowDatabases(ctx context.Context) ([]Database, error) {
 	}
 
 	var name, host, port, null sql.NullString
+	var currentConnections sql.NullInt64
 
 	for idx := range columnPointers {
 		columnPointers[idx] = &null
@@ -122,6 +125,7 @@ func (b *PgBouncer) ShowDatabases(ctx context.Context) ([]Database, error) {
 	columnPointers[indexOfColumn("name")] = &name
 	columnPointers[indexOfColumn("host")] = &host
 	columnPointers[indexOfColumn("port")] = &port
+	columnPointers[indexOfColumn("current_connections")] = &currentConnections
 
 	for {
 		err := rows.Scan(columnPointers...)
@@ -131,7 +135,7 @@ func (b *PgBouncer) ShowDatabases(ctx context.Context) ([]Database, error) {
 		}
 
 		databases = append(databases, Database{
-			name.String, host.String, port.String,
+			name.String, host.String, port.String, currentConnections.Int64,
 		})
 
 		if !rows.Next() {
@@ -175,6 +179,31 @@ func (b *PgBouncer) Resume(ctx context.Context) error {
 		}
 
 		return err
+	}
+
+	return nil
+}
+
+// Disable causes PgBouncer to reject all new client connections on the given databases.
+// If no databases are supplied then this operation will apply to all PgBouncer databases.
+func (b *PgBouncer) Disable(ctx context.Context, databases ...string) error {
+	if len(databases) == 0 {
+		dbs, err := b.ShowDatabases(ctx)
+		if err != nil {
+			return err
+		}
+
+		for _, db := range dbs {
+			if db.Name != "pgbouncer" {
+				databases = append(databases, db.Name)
+			}
+		}
+	}
+
+	for _, database := range databases {
+		if err := b.Executor.Execute(ctx, fmt.Sprintf(`DISABLE %s;`, database)); err != nil {
+			return err
+		}
 	}
 
 	return nil
