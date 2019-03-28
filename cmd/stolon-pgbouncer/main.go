@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/alecthomas/kingpin"
 	"github.com/coreos/etcd/clientv3"
@@ -45,18 +46,20 @@ var (
 	storeKeepaliveTime    = app.Flag("store-keepalive-time", "Time after which client pings server to check transport").Default("30s").Duration()
 	storeKeepaliveTimeout = app.Flag("store-keepalive-timeout", "Timeout for store keepalive probe").Default("5s").Duration()
 
-	supervise                   = app.Command("supervise", "Manages local PgBouncer")
-	superviseExecPgBouncer      = supervise.Flag("exec-pgbouncer", "stolon-pgbouncer will run PgBouncer as a child process").Default("false").Bool()
-	supervisePollInterval       = supervise.Flag("poll-interval", "Store poll interval").Default("1m").Duration()
-	superviseUser               = supervise.Flag("pgbouncer-user", "Admin user of PgBouncer").Default("pgbouncer").String()
-	supervisePassword           = supervise.Flag("pgbouncer-password", "Password for admin user").Default("").String()
-	superviseDatabase           = supervise.Flag("pgbouncer-database", "PgBouncer special database (inadvisable to change)").Default("pgbouncer").String()
-	superviseSocketDir          = supervise.Flag("pgbouncer-socket-dir", "Directory in which the unix socket resides").Default("/var/run/postgresql").String()
-	supervisePort               = supervise.Flag("pgbouncer-port", "Directory in which the unix socket resides").Default("6432").String()
-	superviseConfigFile         = supervise.Flag("pgbouncer-config-file", "Path to PgBouncer config file").Default("/etc/pgbouncer/pgbouncer.ini").String()
-	superviseConfigTemplateFile = supervise.Flag("pgbouncer-config-template-file", "Path to PgBouncer config template file").Default("/etc/pgbouncer/pgbouncer.ini.template").String()
-	supervisePgBouncerTimeout   = supervise.Flag("pgbouncer-timeout", "Timeout for PgBouncer operations").Default("5s").Duration()
-	superviseRetryTimeout       = supervise.Flag("pgbouncer-retry-timeout", "Retry failed PgBouncer operations at this interval").Default("5s").Duration()
+	supervise                        = app.Command("supervise", "Manages local PgBouncer")
+	superviseExecPgBouncer           = supervise.Flag("exec-pgbouncer", "stolon-pgbouncer will run PgBouncer as a child process").Default("false").Bool()
+	superviseTerminationGracePeriod  = supervise.Flag("termination-grace-period", "Pause before rejecting new PgBouncer connections (on shutdown)").Default("5s").Duration()
+	superviseTerminationPollInterval = supervise.Flag("termination-poll-interval", "Poll PgBouncer for outstanding connections at this rate").Default("10s").Duration()
+	supervisePollInterval            = supervise.Flag("poll-interval", "Store poll interval").Default("1m").Duration()
+	superviseUser                    = supervise.Flag("pgbouncer-user", "Admin user of PgBouncer").Default("pgbouncer").String()
+	supervisePassword                = supervise.Flag("pgbouncer-password", "Password for admin user").Default("").String()
+	superviseDatabase                = supervise.Flag("pgbouncer-database", "PgBouncer special database (inadvisable to change)").Default("pgbouncer").String()
+	superviseSocketDir               = supervise.Flag("pgbouncer-socket-dir", "Directory in which the unix socket resides").Default("/var/run/postgresql").String()
+	supervisePort                    = supervise.Flag("pgbouncer-port", "Directory in which the unix socket resides").Default("6432").String()
+	superviseConfigFile              = supervise.Flag("pgbouncer-config-file", "Path to PgBouncer config file").Default("/etc/pgbouncer/pgbouncer.ini").String()
+	superviseConfigTemplateFile      = supervise.Flag("pgbouncer-config-template-file", "Path to PgBouncer config template file").Default("/etc/pgbouncer/pgbouncer.ini.template").String()
+	supervisePgBouncerTimeout        = supervise.Flag("pgbouncer-timeout", "Timeout for PgBouncer operations").Default("5s").Duration()
+	superviseRetryTimeout            = supervise.Flag("pgbouncer-retry-timeout", "Retry failed PgBouncer operations at this interval").Default("5s").Duration()
 
 	failover = app.Command("failover", "Run a zero-downtime failover of the Postgres primary")
 )
@@ -142,10 +145,60 @@ func main() {
 					kingpin.Fatalf("failed to generate initial PgBouncer config: %v", err)
 				}
 
-				cmd := exec.CommandContext(ctx, "pgbouncer", *superviseConfigFile)
+				cmdCtx, cmdCancel := context.WithCancel(context.Background())
+
+				cmd := exec.CommandContext(cmdCtx, "pgbouncer", *superviseConfigFile)
 				cmd.Stderr = os.Stderr
 
-				g.Add(cmd.Run, func(error) { cancel() })
+				// Termination handler for PgBouncer. Ensures we only quit PgBouncer once all
+				// connections have finished their work.
+				g.Add(cmd.Run, func(error) {
+					// Whatever happens, once we exit this block we want to terminate the PgBouncer
+					// process.
+					defer cmdCancel()
+
+					logger.Log("event", "termination_grace_period", "msg", "waiting for grace period")
+					time.Sleep(*superviseTerminationGracePeriod)
+
+					logger.Log("event", "disable", "msg", "disabling new PgBouncer connections")
+					{
+						ctx, cancel := context.WithTimeout(context.Background(), *supervisePgBouncerTimeout)
+						defer cancel()
+
+						if err := pgBouncer.Disable(ctx); err != nil {
+							logger.Log("error", err, "failed to disable PgBouncer")
+							return
+						}
+					}
+
+				PollConnections:
+
+					ctx, cancel := context.WithTimeout(context.Background(), *supervisePgBouncerTimeout)
+					defer cancel()
+
+					dbs, err := pgBouncer.ShowDatabases(ctx)
+					if err != nil {
+						logger.Log("event", "pgbouncer.error", "error", err, "msg", "could not contact PgBouncer")
+						goto PollConnections
+					}
+
+					var currentConnections = int64(0)
+					for _, db := range dbs {
+						currentConnections += db.CurrentConnections
+						if db.CurrentConnections > 0 {
+							logger.Log("event", "outstanding_connections", "database", db.Name, "count", db.CurrentConnections)
+						}
+					}
+
+					if currentConnections > 0 {
+						logger.Log("event", "shutdown_pending", "total", currentConnections,
+							"msg", "waiting for outstanding connections to complete before terminating PgBouncer")
+						time.Sleep(*superviseTerminationPollInterval)
+						goto PollConnections
+					}
+
+					logger.Log("event", "idle", "msg", "no more connections in PgBouncer, shutting down")
+				})
 			}
 		}
 
