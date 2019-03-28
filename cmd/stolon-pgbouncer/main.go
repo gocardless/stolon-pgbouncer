@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	stdlog "log"
@@ -23,6 +25,7 @@ import (
 	"github.com/gocardless/pgsql-cluster-manager/pkg/pgbouncer"
 	"github.com/gocardless/pgsql-cluster-manager/pkg/streams"
 	"github.com/oklog/run"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -48,8 +51,6 @@ var (
 
 	supervise                        = app.Command("supervise", "Manages local PgBouncer")
 	superviseExecPgBouncer           = supervise.Flag("exec-pgbouncer", "stolon-pgbouncer will run PgBouncer as a child process").Default("false").Bool()
-	superviseTerminationGracePeriod  = supervise.Flag("termination-grace-period", "Pause before rejecting new PgBouncer connections (on shutdown)").Default("5s").Duration()
-	superviseTerminationPollInterval = supervise.Flag("termination-poll-interval", "Poll PgBouncer for outstanding connections at this rate").Default("10s").Duration()
 	supervisePollInterval            = supervise.Flag("poll-interval", "Store poll interval").Default("1m").Duration()
 	superviseUser                    = supervise.Flag("pgbouncer-user", "Admin user of PgBouncer").Default("pgbouncer").String()
 	supervisePassword                = supervise.Flag("pgbouncer-password", "Password for admin user").Default("").String()
@@ -60,9 +61,60 @@ var (
 	superviseConfigTemplateFile      = supervise.Flag("pgbouncer-config-template-file", "Path to PgBouncer config template file").Default("/etc/pgbouncer/pgbouncer.ini.template").String()
 	supervisePgBouncerTimeout        = supervise.Flag("pgbouncer-timeout", "Timeout for PgBouncer operations").Default("5s").Duration()
 	superviseRetryTimeout            = supervise.Flag("pgbouncer-retry-timeout", "Retry failed PgBouncer operations at this interval").Default("5s").Duration()
+	superviseTerminationGracePeriod  = supervise.Flag("termination-grace-period", "Pause before rejecting new PgBouncer connections (on shutdown)").Default("5s").Duration()
+	superviseTerminationPollInterval = supervise.Flag("termination-poll-interval", "Poll PgBouncer for outstanding connections at this rate").Default("10s").Duration()
 
 	failover = app.Command("failover", "Run a zero-downtime failover of the Postgres primary")
 )
+
+var (
+	ClusterIdentifier = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "stolon_pgbouncer_cluster_identifier",
+			Help: "MD5 hash of the cluster name and store prefix",
+		},
+		[]string{"store_prefix", "cluster_name"},
+	)
+	ShutdownSeconds = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "stolon_pgbouncer_shutdown_seconds",
+			Help: "Shutdown time (received termination signal) since unix epoch in seconds",
+		},
+	)
+	OutstandingConnections = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "stolon_pgbouncer_outstanding_connections",
+			Help: "Number of outstanding connections in PgBouncer during shutdown",
+		},
+	)
+	HostHash = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "stolon_pgbouncer_host_hash",
+			Help: "MD5 hash of the last successfully reloaded host value",
+		},
+	)
+	StorePollInterval = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "stolon_pgbouncer_store_poll_interval",
+			Help: "Seconds between each store poll attempt",
+		},
+	)
+	LastReloadSeconds = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "stolon_pgbouncer_last_reload_seconds",
+			Help: "Most recent PgBouncer reload time since unix epoch in seconds",
+		},
+	)
+)
+
+func init() {
+	prometheus.MustRegister(ClusterIdentifier)
+	prometheus.MustRegister(ShutdownSeconds)
+	prometheus.MustRegister(OutstandingConnections)
+	prometheus.MustRegister(HostHash)
+	prometheus.MustRegister(StorePollInterval)
+	prometheus.MustRegister(LastReloadSeconds)
+}
 
 // Clusterdata is a minimal extraction that we need from stolon
 type Clusterdata struct {
@@ -119,6 +171,17 @@ func main() {
 	ctx, cancel := setupSignalHandler()
 	defer cancel()
 
+	go func() {
+		<-ctx.Done()
+		ShutdownSeconds.Set(float64(time.Now().Unix()))
+	}()
+
+	// Set any metrics that expose config flags
+	ClusterIdentifier.WithLabelValues(*storePrefix, *clusterName).Set(
+		md5float([]byte(fmt.Sprintf("%s/%s", *storePrefix, *clusterName))),
+	)
+	StorePollInterval.Set(float64(*supervisePollInterval))
+
 	switch command {
 	case supervise.FullCommand():
 		var g run.Group
@@ -166,7 +229,7 @@ func main() {
 						defer cancel()
 
 						if err := pgBouncer.Disable(ctx); err != nil {
-							logger.Log("error", err, "failed to disable PgBouncer")
+							logger.Log("error", err, "msg", "failed to disable PgBouncer")
 							return
 						}
 					}
@@ -190,6 +253,8 @@ func main() {
 						}
 					}
 
+					OutstandingConnections.Set(float64(currentConnections))
+
 					if currentConnections > 0 {
 						logger.Log("event", "shutdown_pending", "total", currentConnections,
 							"msg", "waiting for outstanding connections to complete before terminating PgBouncer")
@@ -203,7 +268,7 @@ func main() {
 		}
 
 		{
-			var logger = kitlog.With(logger, "component", "pgbouncer.config_management")
+			var logger = kitlog.With(logger, "component", "pgbouncer.supervise")
 
 			streamOptions := etcd.StreamOptions{
 				Ctx:          ctx,
@@ -234,7 +299,7 @@ func main() {
 						func(ctx context.Context, kv *mvccpb.KeyValue) (err error) {
 							defer func() {
 								if err != nil {
-									logger.Log("event", "supervise.error", "error", err, "msg", "failed to respond to change in clusterdata")
+									logger.Log("error", err, "msg", "failed to respond to change in clusterdata")
 								}
 							}()
 
@@ -245,16 +310,26 @@ func main() {
 
 							masterAddress := clusterdata.Dbs[clusterdata.Proxy.Spec.MasterDbUID].Status.ListenAddress
 							if masterAddress == "" {
-								logger.Log("event", "clusterdata.no_master", "msg", "no master found, not reloading PgBouncer")
+								logger.Log("event", "clusterdata_no_master", "msg", "no master found, not reloading PgBouncer")
 								return nil
 							}
 
-							logger.Log("event", "pgbouncer.reload_configuration", "host", masterAddress)
+							logger.Log("event", "generate_configuration", "host", masterAddress)
 							if err := pgBouncer.GenerateConfig(masterAddress); err != nil {
 								return err
 							}
 
-							return pgBouncer.Reload(ctx)
+							logger.Log("event", "reload")
+							if err := pgBouncer.Reload(ctx); err != nil {
+								return err
+							}
+
+							// Set metrics that power alerts. These values are only set when we've
+							// succeeded in reloading PgBouncer.
+							HostHash.Set(md5float([]byte(masterAddress)))
+							LastReloadSeconds.Set(float64(time.Now().Unix()))
+
+							return nil
 						},
 					)
 				},
@@ -305,4 +380,16 @@ func setupSignalHandler() (context.Context, func()) {
 	}()
 
 	return ctx, cancel
+}
+
+// md5float generates a float64 from the md5 hash of the given string value. Useful for
+// exposing distinct values through Prometheus metrics.
+//
+// We use the first 48 bits of the md5 hash as the float64 specification has a 53 bit
+// mantissa.
+func md5float(content []byte) float64 {
+	sum := md5.Sum(content)
+	var bytes = make([]byte, 8)
+	copy(bytes, sum[0:6])
+	return float64(binary.LittleEndian.Uint64(bytes))
 }
