@@ -72,7 +72,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:393706aac5d739346e4dc4c7497a0b13a3cc3b6e272c6fc27ea17196b1538c38"
+  digest = "1:02067d5693af26eb4181a07c26e95d46955b62d2c3a9487b7b4a037c2d17fe23"
   name = "github.com/gocardless/pgsql-cluster-manager"
   packages = [
     "pkg/etcd",
@@ -80,7 +80,7 @@
     "pkg/streams",
   ]
   pruneopts = "UT"
-  revision = "ccbd2312c798f9b853675e19b17aa05f11c3fc5e"
+  revision = "67dd55a9696045f61999ec76e905fe79da0bcc84"
 
 [[projects]]
   digest = "1:4652941215f23c7ad6546bab86964c72248a1134baa53f0df618661344ba5cac"
@@ -189,17 +189,11 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:c31163bd62461e0c5f7ddc7363e39ef8d9e929693e77b5c11c709b05f9cb9219"
+  digest = "1:f806b417865e83457c3659232926203f5b0d39aa741b71d9e3e4c0c774e71a5c"
   name = "github.com/prometheus/procfs"
-  packages = [
-    ".",
-    "internal/util",
-    "iostats",
-    "nfs",
-    "xfs",
-  ]
+  packages = ["."]
   pruneopts = "UT"
-  revision = "55ae3d9d557340b5bc24cd8aa5f6fa2c2ab31352"
+  revision = "af7bedc223fba51343f25a6fa7aba84355d0357a"
 
 [[projects]]
   branch = "master"
@@ -215,7 +209,7 @@
     "trace",
   ]
   pruneopts = "UT"
-  revision = "710a502c58a2a4b2d7417a4e24ccb96d8dc13fa3"
+  revision = "63eda1eb0650888965ead1296efd04d0b2b61128"
 
 [[projects]]
   branch = "master"
@@ -310,6 +304,7 @@
     "github.com/gocardless/pgsql-cluster-manager/pkg/pgbouncer",
     "github.com/gocardless/pgsql-cluster-manager/pkg/streams",
     "github.com/oklog/run",
+    "github.com/prometheus/client_golang/prometheus",
     "github.com/prometheus/client_golang/prometheus/promhttp",
   ]
   solver-name = "gps-cdcl"
