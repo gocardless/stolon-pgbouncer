@@ -72,20 +72,6 @@
   version = "v0.4.0"
 
 [[projects]]
-  branch = "master"
-  digest = "1:f176d325231db8db996b62f77312f6392e18d1a9e289e535ac39b7dce0e0a65f"
-  name = "github.com/gocardless/pgsql-cluster-manager"
-  packages = [
-    "pkg/etcd",
-    "pkg/etcd/integration",
-    "pkg/pgbouncer",
-    "pkg/pgbouncer/integration",
-    "pkg/streams",
-  ]
-  pruneopts = "UT"
-  revision = "67dd55a9696045f61999ec76e905fe79da0bcc84"
-
-[[projects]]
   digest = "1:4652941215f23c7ad6546bab86964c72248a1134baa53f0df618661344ba5cac"
   name = "github.com/gogo/protobuf"
   packages = [
@@ -192,11 +178,13 @@
   version = "v1.8.0"
 
 [[projects]]
-  digest = "1:fe167e8f858cbfc10c721f2000f2446140800bb53fa83c088e03d191275611a4"
+  digest = "1:32a1ad8f318bf9610b2d2034c8d34b5193ef11ff44ed9fb6ec421581e14e2ea2"
   name = "github.com/onsi/gomega"
   packages = [
     ".",
     "format",
+    "gstruct",
+    "gstruct/errors",
     "internal/assertion",
     "internal/asyncassertion",
     "internal/oraclematcher",
@@ -414,18 +402,16 @@
     "github.com/coreos/etcd/mvcc/mvccpb",
     "github.com/go-kit/kit/log",
     "github.com/go-kit/kit/log/level",
-    "github.com/gocardless/pgsql-cluster-manager/pkg/etcd",
-    "github.com/gocardless/pgsql-cluster-manager/pkg/etcd/integration",
-    "github.com/gocardless/pgsql-cluster-manager/pkg/pgbouncer",
-    "github.com/gocardless/pgsql-cluster-manager/pkg/pgbouncer/integration",
-    "github.com/gocardless/pgsql-cluster-manager/pkg/streams",
     "github.com/golang/protobuf/proto",
     "github.com/golang/protobuf/ptypes",
     "github.com/golang/protobuf/ptypes/timestamp",
     "github.com/jackc/pgx",
+    "github.com/jackc/pgx/pgtype",
     "github.com/oklog/run",
     "github.com/onsi/ginkgo",
     "github.com/onsi/gomega",
+    "github.com/onsi/gomega/gstruct",
+    "github.com/onsi/gomega/types",
     "github.com/pkg/errors",
     "github.com/prometheus/client_golang/prometheus",
     "github.com/prometheus/client_golang/prometheus/promhttp",
