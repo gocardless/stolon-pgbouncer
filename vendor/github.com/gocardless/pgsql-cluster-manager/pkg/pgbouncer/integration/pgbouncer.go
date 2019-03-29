@@ -65,7 +65,7 @@ unix_socket_dir = %s
 auth_type = trust
 auth_file = %s/users.txt
 admin_users = postgres,pgbouncer
-pool_mode = transaction
+pool_mode = session
 ignore_startup_parameters = extra_float_digits`, database, port, workspace, workspace, workspace)),
 			0644,
 		)
