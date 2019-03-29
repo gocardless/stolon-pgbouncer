@@ -57,7 +57,7 @@ var (
 
 	pauser                 = app.Command("pauser", "Serve the PgBouncer pause API")
 	pauserPgBouncerOptions = newPgBouncerOptions(pauser)
-	pauserBindAddress      = supervise.Flag("bind-address", "Listen address for the pause API").Default(":8080").String()
+	pauserBindAddress      = pauser.Flag("bind-address", "Listen address for the pause API").Default(":8080").String()
 
 	failover                   = app.Command("failover", "Run a zero-downtime failover of the Postgres primary")
 	failoverStolonOptions      = newStolonOptions(failover)
