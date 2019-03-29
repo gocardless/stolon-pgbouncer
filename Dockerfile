@@ -3,7 +3,7 @@ COPY . /go/src/github.com/gocardless/stolon-pgbouncer
 WORKDIR /go/src/github.com/gocardless/stolon-pgbouncer
 RUN go build -o stolon-pgbouncer cmd/stolon-pgbouncer/main.go
 
-FROM eu.gcr.io/gc-containers/gocardless/base:bionic-2019020401
+FROM ubuntu:18.04
 RUN set -x \
       && apt-get update -y \
       && apt-get install -y software-properties-common pgbouncer postgresql-client \
