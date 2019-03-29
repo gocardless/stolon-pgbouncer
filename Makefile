@@ -15,6 +15,9 @@ bin/%.linux_amd64:
 bin/%:
 	$(BUILD_COMMAND) -o $@ cmd/$*/main.go
 
+generate:
+	go generate ./...
+
 # go get -u github.com/onsi/ginkgo/ginkgo
 test:
 	ginkgo -v -r
