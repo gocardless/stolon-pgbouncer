@@ -24,3 +24,15 @@ test:
 
 clean:
 	rm -rvf $(PROG) $(PROG:%=%.linux_amd64)
+
+docker-base: Dockerfile
+	docker build -t gocardless/stolon-pgbouncer:v1 .
+
+docker-stolon-node: docker/stolon-node/Dockerfile
+	docker build -t gocardless/stolon-node:v1 docker/docker/stolon-node/Dockerfile
+
+publish-base: docker-base
+	docker push gocardless/stolon-pgbouncer:v1
+
+publish-stolon-node: docker-stolon-node
+	docker push gocardless/stolon-node:v1

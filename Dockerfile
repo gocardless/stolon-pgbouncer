@@ -10,5 +10,5 @@ RUN set -x \
       && mkdir -pv /var/run/postgresql /var/log/postgresql
 
 COPY --from=build /go/src/github.com/gocardless/stolon-pgbouncer/stolon-pgbouncer /usr/local/bin/stolon-pgbouncer
-USER app
+USER postgres
 ENTRYPOINT ["/usr/local/bin/stolon-pgbouncer"]

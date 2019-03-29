@@ -1,0 +1,2 @@
+"postgres" "whatever_we_trust"
+"pgbouncer" "whatever_we_trust"

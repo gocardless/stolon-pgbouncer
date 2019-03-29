@@ -1,0 +1,75 @@
+---
+version: "3.7"
+
+x-app-defaults: &appDefaults
+  build:
+    context: docker/stolon-node
+  depends_on:
+    - sentinel
+
+services:
+  etcd-store:
+    image: quay.io/coreos/etcd:v3.2.17
+    entrypoint:
+      - etcd
+    command:
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://0.0.0.0:2379
+    ports:
+      - "2379:2379"
+    networks:
+      default:
+        aliases:
+          - etcd-store
+
+  sentinel:
+    build:
+      context: docker/stolon-node
+    depends_on:
+      - etcd-store
+    entrypoint:
+      - /usr/local/bin/stolon-sentinel
+      - --cluster-name=main
+      - --store-backend=etcdv3
+      - --store-endpoints=etcd-store:2379
+
+  pgbouncer:
+    hostname: pgbouncer
+    build:
+      context: docker/stolon-node
+    user: postgres
+    entrypoint:
+      - /usr/local/bin/stolon-pgbouncer
+      - supervise
+      - --enable-child-process
+    ports:
+      - "6432:6432"
+    depends_on:
+      - keeper0
+      - keeper1
+      - keeper2
+
+  keeper0:
+    hostname: keeper0
+    build:
+      context: docker/stolon-node
+    depends_on:
+      - sentinel
+
+  keeper1:
+    hostname: keeper1
+    build:
+      context: docker/stolon-node
+    depends_on:
+      - sentinel
+
+  keeper2:
+    hostname: keeper2
+    build:
+      context: docker/stolon-node
+    depends_on:
+      - sentinel
+
+networks:
+  default:
+    driver: bridge
