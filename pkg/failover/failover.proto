@@ -1,0 +1,36 @@
+syntax = "proto3";
+package failover;
+
+import "google/protobuf/timestamp.proto";
+
+service Failover {
+  rpc health_check(Empty) returns (HealthCheckResponse) {}
+  rpc pause(PauseRequest) returns (PauseResponse) {}
+  rpc resume(Empty) returns (ResumeResponse) {}
+}
+
+message Empty {} // for all null requests
+
+message HealthCheckResponse {
+  enum Status {
+    UNKNOWN = 0;
+    HEALTHY = 1;
+    UNHEALTHY = 2;
+  }
+
+  Status status = 1;
+}
+
+message PauseRequest {
+  int64 timeout = 1;
+  int64 expiry = 2;
+}
+
+message PauseResponse {
+  google.protobuf.Timestamp created_at = 1;
+  google.protobuf.Timestamp expires_at = 2;
+}
+
+message ResumeResponse {
+  google.protobuf.Timestamp created_at = 1;
+}
