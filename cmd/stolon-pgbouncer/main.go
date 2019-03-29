@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	stdlog "log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -16,14 +17,19 @@ import (
 	"syscall"
 	"time"
 
+	"google.golang.org/grpc"
+
+	"github.com/gocardless/stolon-pgbouncer/pkg/etcd"
+	pkgfailover "github.com/gocardless/stolon-pgbouncer/pkg/failover"
+	"github.com/gocardless/stolon-pgbouncer/pkg/pgbouncer"
+	"github.com/gocardless/stolon-pgbouncer/pkg/stolon"
+	"github.com/gocardless/stolon-pgbouncer/pkg/streams"
+
 	"github.com/alecthomas/kingpin"
 	"github.com/coreos/etcd/clientv3"
 	"github.com/coreos/etcd/mvcc/mvccpb"
 	kitlog "github.com/go-kit/kit/log"
 	level "github.com/go-kit/kit/log/level"
-	"github.com/gocardless/pgsql-cluster-manager/pkg/etcd"
-	"github.com/gocardless/pgsql-cluster-manager/pkg/pgbouncer"
-	"github.com/gocardless/pgsql-cluster-manager/pkg/streams"
 	"github.com/oklog/run"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -53,8 +59,15 @@ var (
 	pauserPgBouncerOptions = newPgBouncerOptions(pauser)
 	pauserBindAddress      = supervise.Flag("bind-address", "Listen address for the pause API").Default(":8080").String()
 
-	failover              = app.Command("failover", "Run a zero-downtime failover of the Postgres primary")
-	failoverStolonOptions = newStolonOptions(failover)
+	failover                   = app.Command("failover", "Run a zero-downtime failover of the Postgres primary")
+	failoverStolonOptions      = newStolonOptions(failover)
+	failoverPauserPort         = failover.Flag("pauser-port", "Port on which the pauser APIs are listening").Default("8080").String()
+	failoverHealthCheckTimeout = failover.Flag("health-check-timeout", "Timeout for health checking pause clients").Default("2s").Duration()
+	failoverLockTimeout        = failover.Flag("lock-timeout", "Timeout for acquiring failover lock").Default("5s").Duration()
+	failoverPauseTimeout       = failover.Flag("pause-timeout", "Timeout for pausing PgBouncer").Default("5s").Duration()
+	failoverPauseExpiry        = failover.Flag("pause-expiry", "Time to wait before resuming PgBouncer after pause").Default("25s").Duration()
+	failoverResumeTimeout      = failover.Flag("resume-timeout", "Timeout for issuing PgBouncer resumes").Default("5s").Duration()
+	failoverStolonctlTimeout   = failover.Flag("stolonctl-timeout", "Timeout for executing stolonctl commands").Default("5s").Duration()
 )
 
 type stolonOptions struct {
@@ -65,10 +78,10 @@ type stolonOptions struct {
 func newStolonOptions(cmd *kingpin.CmdClause) *stolonOptions {
 	opt := &stolonOptions{}
 
-	cmd.Flag("cluster-name", "Name of the stolon cluster").Default("").StringVar(&opt.ClusterName)
-	cmd.Flag("store-backend", "Store backend provider").Default("etcdv3").StringVar(&opt.Backend)
-	cmd.Flag("store-prefix", "Store prefix").Default("stolon/cluster").StringVar(&opt.Prefix)
-	cmd.Flag("store-endpoints", "Comma delimited list of store endpoints").Default("http://127.0.0.1:2379").StringVar(&opt.Endpoints)
+	cmd.Flag("cluster-name", "Name of the stolon cluster").Default("").Envar("STOLONCTL_CLUSTER_NAME").StringVar(&opt.ClusterName)
+	cmd.Flag("store-backend", "Store backend provider").Default("etcdv3").Envar("STOLONCTL_STORE_BACKEND").StringVar(&opt.Backend)
+	cmd.Flag("store-prefix", "Store prefix").Default("stolon/cluster").Envar("STOLONCTL_STORE_PREFIX").StringVar(&opt.Prefix)
+	cmd.Flag("store-endpoints", "Comma delimited list of store endpoints").Envar("STOLONCTL_STORE_ENDPOINTS").Default("http://127.0.0.1:2379").StringVar(&opt.Endpoints)
 	cmd.Flag("store-timeout", "Timeout for store operations").Default("3s").DurationVar(&opt.Timeout)
 	cmd.Flag("store-dial-timeout", "Timeout when connecting to store").Default("3s").DurationVar(&opt.DialTimeout)
 	cmd.Flag("store-keepalive-time", "Time after which client pings server to check transport").Default("30s").DurationVar(&opt.KeepaliveTime)
@@ -144,22 +157,6 @@ func init() {
 	prometheus.MustRegister(LastReloadSeconds)
 }
 
-// Clusterdata is a minimal extraction that we need from stolon
-type Clusterdata struct {
-	Proxy struct {
-		Spec struct {
-			MasterDbUID string `json:"masterDbUid"`
-		} `json:"spec"`
-	} `json:"proxy"`
-
-	Dbs map[string]struct {
-		Status struct {
-			ListenAddress string `json:"listenAddress"`
-			Port          string `json:"port"`
-		} `json:"status"`
-	} `json:"dbs"`
-}
-
 func main() {
 	command := kingpin.MustParse(app.Parse(os.Args[1:]))
 
@@ -188,6 +185,71 @@ func main() {
 	}()
 
 	switch command {
+	case failover.FullCommand():
+		client := mustStore(failoverStolonOptions)
+		stopt := failoverStolonOptions
+
+		clusterdataKey := fmt.Sprintf("%s/%s/clusterdata", stopt.Prefix, stopt.ClusterName)
+		clusterdata, err := stolon.GetClusterdata(ctx, client, clusterdataKey)
+		if err != nil {
+			kingpin.Fatalf("failed to get clusterdata: %s", err)
+		}
+
+		stolonctl := stolon.Stolonctl{
+			ClusterName: stopt.ClusterName, Backend: stopt.Backend, Prefix: stopt.Prefix, Endpoints: stopt.Endpoints,
+		}
+
+		clients := map[string]pkgfailover.FailoverClient{}
+		for _, db := range clusterdata.Dbs {
+			logger.Log("event", "client.dial", "client", db)
+			conn, err := grpc.Dial(fmt.Sprintf("%s:%s", db.Status.ListenAddress, *failoverPauserPort), grpc.WithInsecure())
+			if err != nil {
+				kingpin.Fatalf("failed to dial client %s: %v", db, err)
+			}
+
+			clients[db.Spec.KeeperUID] = pkgfailover.NewFailoverClient(conn)
+		}
+
+		// Once our initial context is finished, wait some time before cancelling our defer
+		// context. This ensures in the event of an operator SIGQUIT that we attempt to run
+		// cleanup tasks before actually quitting.
+		deferCtx, cancel := context.WithCancel(context.Background())
+		go func() { ctx.Done(); time.Sleep(10 * time.Second); cancel() }()
+		defer cancel()
+
+		opt := pkgfailover.FailoverOptions{
+			ClusterdataKey:     clusterdataKey,
+			HealthCheckTimeout: *failoverHealthCheckTimeout,
+			LockTimeout:        *failoverLockTimeout,
+			PauseTimeout:       *failoverPauseTimeout,
+			PauseExpiry:        *failoverPauseExpiry,
+			ResumeTimeout:      *failoverResumeTimeout,
+			StolonctlTimeout:   *failoverStolonctlTimeout,
+		}
+
+		if err := pkgfailover.NewFailover(logger, client, clients, stolonctl, opt).Run(ctx, deferCtx); err != nil {
+			logger.Log("error", err, "msg", "exiting with error")
+			os.Exit(1)
+		}
+
+	case pauser.FullCommand():
+		var logger = kitlog.With(logger, "component", "pauser.api")
+
+		listen, err := net.Listen("tcp", *pauserBindAddress)
+		if err != nil {
+			kingpin.Fatalf("failed to bind to address: %v", err)
+		}
+
+		server := pkgfailover.NewServer(logger, mustPgBouncer(pauserPgBouncerOptions))
+		grpcServer := grpc.NewServer(grpc.UnaryInterceptor(server.LoggingInterceptor))
+		pkgfailover.RegisterFailoverServer(grpcServer, server)
+
+		logger.Log("event", "listen", "address", *pauserBindAddress)
+		if err := grpcServer.Serve(listen); err != nil {
+			logger.Log("error", err.Error(), "msg", "exiting with error")
+			os.Exit(1)
+		}
+
 	case supervise.FullCommand():
 		var g run.Group
 
@@ -303,18 +365,19 @@ func main() {
 								}
 							}()
 
-							var clusterdata = &Clusterdata{}
+							var clusterdata = &stolon.Clusterdata{}
 							if err := json.Unmarshal(kv.Value, clusterdata); err != nil {
 								return err
 							}
 
-							masterAddress := clusterdata.Dbs[clusterdata.Proxy.Spec.MasterDbUID].Status.ListenAddress
+							master := clusterdata.Master()
+							masterAddress := master.Status.ListenAddress
 							if masterAddress == "" {
 								logger.Log("event", "clusterdata_no_master", "msg", "no master found, not reloading PgBouncer")
 								return nil
 							}
 
-							logger.Log("event", "generate_configuration", "host", masterAddress)
+							logger.Log("event", "generate_configuration", "host", master)
 							if err := pgBouncer.GenerateConfig(masterAddress); err != nil {
 								return err
 							}
@@ -340,9 +403,9 @@ func main() {
 		if err := g.Run(); err != nil {
 			logger.Log("error", err.Error(), "msg", "exiting with error")
 		}
-
-		logger.Log("event", "shutdown")
 	}
+
+	logger.Log("event", "shutdown")
 }
 
 // Set by goreleaser
