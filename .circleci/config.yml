@@ -1,56 +1,58 @@
 ---
 version: 2
 
-jobs:
-  build:
-    docker:
-      - image: golang:1.12
+references:
+  docker_build_image: &docker_build_image
     working_directory: /go/src/github.com/gocardless/stolon-pgbouncer
-    steps:
-      - checkout
-      - run:
-          command: go get -u github.com/onsi/ginkgo/ginkgo
-      - run:
-          name: Build test binaries
-          command: make build-test bin/stolon-pgbouncer.linux_amd64
-      - persist_to_workspace:
-          root: /go/src/github.com/gocardless/stolon-pgbouncer
-          paths: ['pkg', 'bin/stolon-pgbouncer.linux_amd64']
-
-  unit-integration:
     docker:
-      - image: gocardless/stolon-pgbouncer-base:2019040101
+      - image: &image gocardless/stolon-pgbouncer-circleci:2019040101
+        auth:
+          username: $DOCKER_USER
+          password: $DOCKER_PASS
+  docker_postgres_build_image: &docker_postgres_build_image
+    working_directory: /go/src/github.com/gocardless/stolon-pgbouncer
+    docker:
+      - image: *image
         environment:
           PGHOST: "127.0.0.1"
           PGUSER: "postgres"
+        auth:
+          username: $DOCKER_USER
+          password: $DOCKER_PASS
       - image: postgres:11.2
         environment:
           POSTGRES_USER: postgres
           POSTGRES_DB: postgres
           POSTGRES_PASSWORD: ""
-    working_directory: /go/src/github.com/gocardless/stolon-pgbouncer
+
+jobs:
+  build:
+    <<: *docker_build_image
     steps:
-      - attach_workspace:
-          at: /go/src/github.com/gocardless/stolon-pgbouncer
+      - checkout
       - run:
-          name: Install etcd
-          command: |
-            set -x \
-              && curl -fsL https://storage.googleapis.com/etcd/v3.3.12/etcd-v3.3.12-linux-amd64.tar.gz -o /tmp/etcd.tar.gz \
-              && tar xfvz /tmp/etcd.tar.gz -C /usr/local/bin --wildcards 'etcd-*-linux-amd64/etcd' --wildcards 'etcd-*-linux-amd64/etcdctl' --strip-components=1 \
-              && rm -v /tmp/etcd.tar.gz
+          name: Build test binaries
+          command: make bin/stolon-pgbouncer.linux_amd64
+      - persist_to_workspace:
+          root: /go/src/github.com/gocardless/stolon-pgbouncer
+          paths: ['bin/stolon-pgbouncer.linux_amd64']
+
+  unit-integration:
+    <<: *docker_postgres_build_image
+    steps:
+      - checkout
+      - run:
+          name: Compile ginkgo test suites
+          command: ginkgo build -r -race .
       - run:
           name: Run unit tests
           command: find pkg -type f -name '*.test' -printf "%h %f\n" | xargs -n2 sh -c 'cd $0 && su postgres -c ./$1'
 
   release:
-    docker:
-      - image: golang:1.12
-        auth:
-          username: $DOCKER_USER
-          password: $DOCKER_PASS
-    working_directory: /go/src/github.com/gocardless/stolon-pgbouncer
+    <<: *docker_build_image
     steps:
+      - setup_remote_docker
+      - run: echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
       - checkout
       - run:
           name: Release
@@ -62,25 +64,17 @@ jobs:
               exit 0
             fi
 
-            set -x \
-              && curl -fsL https://github.com/goreleaser/goreleaser/releases/download/v0.101.0/goreleaser_Linux_x86_64.tar.gz -o /tmp/goreleaser.tar.gz \
-              && tar xfvz /tmp/goreleaser.tar.gz -C /usr/local/bin --wildcards 'goreleaser' \
-              && rm -rv /tmp/goreleaser.tar.gz
-
-            git log --pretty=oneline --abbrev-commit --no-decorate --no-color "$(git describe --tags --abbrev=0)..HEAD" > /tmp/release-notes
             git tag "${CURRENT_VERSION}"
             git push --tags
 
-            /usr/local/bin/goreleaser --rm-dist --release-notes /tmp/release-notes
+            goreleaser --rm-dist
 
 workflows:
   version: 2
   build-integration:
     jobs:
+      - unit-integration
       - build
-      - unit-integration:
-          requires: [build]
       - release:
           requires:
-            - build
-            # - unit-integration
+            - unit-integration
