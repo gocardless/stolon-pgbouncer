@@ -1,0 +1,52 @@
+---
+version: 2
+
+jobs:
+  build:
+    docker:
+      - image: golang:1.12
+    working_directory: /go/src/github.com/gocardless/stolon-pgbouncer
+    steps:
+      - checkout
+      - run:
+          command: go get -u github.com/onsi/ginkgo/ginkgo
+      - run:
+          name: Build test binaries
+          command: make build-test bin/stolon-pgbouncer.linux_amd64
+      - persist_to_workspace:
+          root: /go/src/github.com/gocardless/stolon-pgbouncer
+          paths: ['pkg', 'bin/stolon-pgbouncer.linux_amd64']
+
+  unit-integration:
+    docker:
+      - image: gocardless/stolon-pgbouncer-base:2019040101
+        environment:
+          PGHOST: "127.0.0.1"
+          PGUSER: "postgres"
+      - image: postgres:11.2
+        environment:
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
+          POSTGRES_PASSWORD: ""
+    working_directory: /go/src/github.com/gocardless/stolon-pgbouncer
+    steps:
+      - attach_workspace:
+          at: /go/src/github.com/gocardless/stolon-pgbouncer
+      - run:
+          name: Install etcd
+          command: |
+            set -x \
+              && curl -fsL https://storage.googleapis.com/etcd/v3.3.12/etcd-v3.3.12-linux-amd64.tar.gz -o /tmp/etcd.tar.gz \
+              && tar xfvz /tmp/etcd.tar.gz -C /usr/local/bin --wildcards 'etcd-*-linux-amd64/etcd' --wildcards 'etcd-*-linux-amd64/etcdctl' --strip-components=1 \
+              && rm -v /tmp/etcd.tar.gz
+      - run:
+          name: Run unit tests
+          command: find pkg -type f -name '*.test' -printf "%h %f\n" | xargs -n2 sh -c 'cd $0 && su postgres -c ./$1'
+
+workflows:
+  version: 2
+  build-integration:
+    jobs:
+      - build
+      - unit-integration:
+          requires: [build]

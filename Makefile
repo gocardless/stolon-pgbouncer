@@ -22,17 +22,24 @@ generate:
 test:
 	ginkgo -v -r
 
+# Produces test binaries for CI
+build-test:
+	ginkgo build -r -race .
+
 clean:
 	rm -rvf $(PROG) $(PROG:%=%.linux_amd64)
 
-docker-base: Dockerfile
-	docker build -t gocardless/stolon-pgbouncer:v1 .
+BASE_TAG=2019040101
+STOLON_NODE_TAG=2019040101
+
+docker-base: docker/base/Dockerfile
+	docker build -t gocardless/stolon-pgbouncer-base:$(BASE_TAG) docker/base
 
 docker-stolon-node: docker/stolon-node/Dockerfile
-	docker build -t gocardless/stolon-node:v1 docker/docker/stolon-node/Dockerfile
+	docker build -t gocardless/stolon-node:$(STOLON_NODE_TAG) docker/stolon-node
 
 publish-base: docker-base
-	docker push gocardless/stolon-pgbouncer:v1
+	docker push gocardless/stolon-pgbouncer-base:$(BASE_TAG)
 
 publish-stolon-node: docker-stolon-node
-	docker push gocardless/stolon-node:v1
+	docker push gocardless/stolon-node:$(STOLON_NODE_TAG)
