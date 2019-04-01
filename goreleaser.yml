@@ -1,0 +1,49 @@
+# View goreleaser docs for configuration settings
+# https://goreleaser.com
+
+---
+project_name: stolon-pgbouncer
+
+builds:
+  - binary: stolon-pgbouncer
+    main: cmd/stolon-pgbouncer/main.go
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+    ldflags: >
+      -X main.Version={{.Version}}
+      -X main.Commit={{.Commit}}
+      -X main.Date={{.Date}}
+      -a
+      -installsuffix cgo
+    env:
+      - CGO_ENABLED=0
+
+dockers:
+  - image: gocardless/stolon-pgbouncer
+    dockerfile: Dockerfile
+    image_templates:
+      - gocardless/stolon-pgbouncer:latest
+      - gocardless/stolon-pgbouncer:{{ .Tag }}
+      - gocardless/stolon-pgbouncer:{{ .Commit }}
+
+brew:
+  github:
+    owner: gocardless
+    name: homebrew-taps
+  commit_author:
+    name: GoCardless Engineering (goreleaser)
+    email: engineering@gocardless.com
+  folder: Formula
+  homepage: https://github.com/gocardless/stolon-pgbouncer
+  description: &description Stolon add-on for running PgBouncer
+
+nfpm:
+  vendor: GoCardless
+  homepage: https://github.com/gocardless/stolon-pgbouncer
+  maintainer: GoCardless Engineering <engineering@gocardless.com>
+  description: *description
+  formats:
+    - deb
