@@ -365,6 +365,11 @@ func main() {
 								}
 							}()
 
+							// It's possible for kv to be nil if our stream is being shutdown
+							if kv == nil {
+								return nil
+							}
+
 							var clusterdata = &stolon.Clusterdata{}
 							if err := json.Unmarshal(kv.Value, clusterdata); err != nil {
 								return err

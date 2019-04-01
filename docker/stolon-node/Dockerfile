@@ -23,9 +23,6 @@ ENV ETCDCTL_API=3 \
     STORE_ENDPOINTS=etcd-store:2379 \
     STOLONCTL_STORE_ENDPOINTS=etcd-store:2379
 
-COPY --chown=postgres pgbouncer/userlist.txt pgbouncer/pgbouncer.ini.template pgbouncer/pgbouncer.ini /etc/pgbouncer/
-COPY stolon/specification.json stolon/init.bash /etc/stolon/
-
 # Cluster data is placed here, and required to be Postgres writeable
 RUN mkdir /data && chown -R postgres:postgres /data
 

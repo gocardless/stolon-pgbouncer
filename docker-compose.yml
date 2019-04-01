@@ -39,9 +39,12 @@ services:
       context: docker/stolon-node
     user: postgres
     entrypoint:
-      - /usr/local/bin/stolon-pgbouncer
+      - /stolon-pgbouncer/bin/stolon-pgbouncer.linux_amd64
       - supervise
       - --enable-child-process
+      - --pgbouncer-config-template-file=/stolon-pgbouncer/docker/stolon-node/pgbouncer/pgbouncer.ini.template
+    volumes:
+      - .:/stolon-pgbouncer
     ports:
       - "6432:6432"
     depends_on:
@@ -53,6 +56,8 @@ services:
     hostname: keeper0
     build:
       context: docker/stolon-node
+    volumes:
+      - .:/stolon-pgbouncer
     depends_on:
       - sentinel
 
@@ -60,6 +65,8 @@ services:
     hostname: keeper1
     build:
       context: docker/stolon-node
+    volumes:
+      - .:/stolon-pgbouncer
     depends_on:
       - sentinel
 
@@ -67,6 +74,8 @@ services:
     hostname: keeper2
     build:
       context: docker/stolon-node
+    volumes:
+      - .:/stolon-pgbouncer
     depends_on:
       - sentinel
 
