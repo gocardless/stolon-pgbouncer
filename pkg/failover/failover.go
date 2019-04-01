@@ -78,7 +78,7 @@ func (f *Failover) Run(ctx context.Context, deferCtx context.Context) error {
 }
 
 func (f *Failover) HealthCheckClients(ctx context.Context) error {
-	f.logger.Log("event", "clients.health_check", "msg", "health checking all clients")
+	f.logger.Log("event", "clients_health_check", "msg", "health checking all clients")
 	for endpoint, client := range f.clients {
 		ctx, cancel := context.WithTimeout(ctx, f.opt.HealthCheckTimeout)
 		defer cancel()
@@ -97,7 +97,7 @@ func (f *Failover) HealthCheckClients(ctx context.Context) error {
 }
 
 func (f *Failover) AcquireLock(ctx context.Context) error {
-	f.logger.Log("event", "etcd.lock.acquire", "msg", "acquiring failover lock in etcd")
+	f.logger.Log("event", "etcd_lock_acquire", "msg", "acquiring failover lock in etcd")
 	ctx, cancel := context.WithTimeout(ctx, f.opt.LockTimeout)
 	defer cancel()
 
@@ -105,7 +105,7 @@ func (f *Failover) AcquireLock(ctx context.Context) error {
 }
 
 func (f *Failover) ReleaseLock(ctx context.Context) error {
-	f.logger.Log("event", "etcd.lock.release", "msg", "releasing failover lock in etcd")
+	f.logger.Log("event", "etcd_lock_release", "msg", "releasing failover lock in etcd")
 	ctx, cancel := context.WithTimeout(ctx, f.opt.LockTimeout)
 	defer cancel()
 
@@ -113,7 +113,7 @@ func (f *Failover) ReleaseLock(ctx context.Context) error {
 }
 
 func (f *Failover) Pause(ctx context.Context) error {
-	logger := kitlog.With(f.logger, "event", "clients.pgbouncer.pause")
+	logger := kitlog.With(f.logger, "event", "pgbouncer_pause")
 	logger.Log("msg", "requesting all pgbouncers pause")
 
 	// Allow an additional second for network round-trip. We should have terminated this
@@ -140,7 +140,7 @@ func (f *Failover) Pause(ctx context.Context) error {
 }
 
 func (f *Failover) Resume(ctx context.Context) error {
-	logger := kitlog.With(f.logger, "event", "clients.pgbouncer.resume")
+	logger := kitlog.With(f.logger, "event", "pgbouncer_resume")
 	logger.Log("msg", "requesting all pgbouncers resume")
 
 	ctx, cancel := context.WithTimeout(ctx, f.opt.ResumeTimeout)
@@ -230,7 +230,7 @@ func (f *Failover) NotifyRecovered(ctx context.Context, logger kitlog.Logger, ol
 		etcd.StreamOptions{
 			Ctx:          ctx,
 			Keys:         []string{f.opt.ClusterdataKey},
-			PollInterval: time.Second,
+			PollInterval: 5 * time.Second,
 			GetTimeout:   time.Second,
 		},
 	)
@@ -257,24 +257,38 @@ func (f *Failover) NotifyRecovered(ctx context.Context, logger kitlog.Logger, ol
 			}
 
 			if !master.Status.Healthy {
-				logger.Log("event", "master.unhealthy", "master", master, "msg", "new master is unhealthy")
+				logger.Log("event", "master_unhealthy", "master", master, "msg", "new master is unhealthy")
 				continue
 			}
 
-			anyUnhealthyStandbys := false
+			healthyStandbys := 0
 			for _, standby := range clusterdata.SynchronousStandbys() {
-				if !standby.Status.Healthy {
-					logger.Log("event", "standby.unhealthy", "standby", standby)
-					anyUnhealthyStandbys = true
+				if standby.Status.Healthy {
+					healthyStandbys++
+				} else {
+					logger.Log("event", "standby_unhealthy", "standby", standby)
 				}
 			}
 
-			if anyUnhealthyStandbys {
+			// We can't rely on the keepers updating our new master state to have standbys
+			// before the proxy has updated with the new master value. We therefore need to
+			// check the cluster specification for the min synchronous standby value so we can
+			// detect when the keeper state for the new master hasn't yet been updated, and
+			// pause until it has the sufficient number of standbys to accept writes.
+			if healthyStandbys < clusterdata.Cluster.Spec.MinSynchronousStandbys {
+				logger.Log("event", "insufficient_standbys", "healthy", healthyStandbys,
+					"minimum", clusterdata.Cluster.Spec.MinSynchronousStandbys,
+					"msg", "do not have enough healthy standbys to satisfy the minSynchronousStandbys")
 				continue
 			}
 
-			logger.Log("event", "healthy", "master", master, "msg", "master is available for writes")
+			logger.Log("master", master, "msg", "master is available for writes")
+			notify <- master
+
+			return
 		}
+
+		close(notify)
 	}()
 
 	return notify

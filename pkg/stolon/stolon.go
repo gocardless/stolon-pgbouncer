@@ -32,6 +32,13 @@ func GetClusterdata(ctx context.Context, client *clientv3.Client, key string) (*
 // Clusterdata is a minimal extraction that we need from stolon. Whenever we upgrade
 // stolon, we should verify that this definition is compatible.
 type Clusterdata struct {
+	Cluster struct {
+		Spec struct {
+			SynchronousReplication bool `json:"synchronousReplication"`
+			MinSynchronousStandbys int  `json:"minSynchronousStandbys"`
+		} `json:"spec"`
+	} `json:"cluster"`
+
 	Proxy struct {
 		Spec struct {
 			MasterDbUID string `json:"masterDbUid"`
@@ -46,10 +53,11 @@ type DB struct {
 		KeeperUID string `json:"keeperUID"`
 	} `json:"spec"`
 	Status struct {
-		Healthy             bool     `json:"healthy"`
-		ListenAddress       string   `json:"listenAddress"`
-		Port                string   `json:"port"`
-		SynchronousStandbys []string `json:"synchronous_standbys"`
+		Healthy                     bool     `json:"healthy"`
+		ListenAddress               string   `json:"listenAddress"`
+		Port                        string   `json:"port"`
+		SynchronousStandbys         []string `json:"synchronousStandbys"`
+		ExternalSynchronousStandbys []string `json:"externalSynchronousStandbys"`
 	} `json:"status"`
 }
 
@@ -66,6 +74,10 @@ func (c Clusterdata) Master() DB {
 func (c Clusterdata) SynchronousStandbys() []DB {
 	dbs := []DB{}
 	for _, standbyUID := range c.Master().Status.SynchronousStandbys {
+		dbs = append(dbs, c.Dbs[standbyUID])
+	}
+
+	for _, standbyUID := range c.Master().Status.ExternalSynchronousStandbys {
 		dbs = append(dbs, c.Dbs[standbyUID])
 	}
 
@@ -86,12 +98,12 @@ type Stolonctl struct {
 }
 
 func (s Stolonctl) CommandContext(ctx context.Context, args ...string) *exec.Cmd {
-	return exec.CommandContext(
-		ctx,
-		"stolonctl",
+	flags := []string{
 		"--cluster-name", s.ClusterName,
 		"--store-backend", s.Backend,
 		"--store-prefix", s.Prefix,
 		"--store-endpoints", s.Endpoints,
-	)
+	}
+
+	return exec.CommandContext(ctx, "stolonctl", append(args, flags...)...)
 }

@@ -58,5 +58,5 @@ func RevisionFilter(logger kitlog.Logger, in <-chan *mvccpb.KeyValue) <-chan *mv
 }
 
 func withKv(logger kitlog.Logger, kv *mvccpb.KeyValue) kitlog.Logger {
-	return kitlog.With(logger, "key", string(kv.Key), "value", string(kv.Value), "revision", kv.ModRevision)
+	return kitlog.With(logger, "key", string(kv.Key), "revision", kv.ModRevision)
 }
