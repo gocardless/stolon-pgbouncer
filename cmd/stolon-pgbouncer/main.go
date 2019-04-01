@@ -63,6 +63,7 @@ var (
 	failoverStolonOptions      = newStolonOptions(failover)
 	failoverPauserPort         = failover.Flag("pauser-port", "Port on which the pauser APIs are listening").Default("8080").String()
 	failoverHealthCheckTimeout = failover.Flag("health-check-timeout", "Timeout for health checking pause clients").Default("2s").Duration()
+	failoverCleanupTimeout     = failover.Flag("cleanup-timeout", "Timeout for running deferred cleanup operations").Default("10s").Duration()
 	failoverLockTimeout        = failover.Flag("lock-timeout", "Timeout for acquiring failover lock").Default("5s").Duration()
 	failoverPauseTimeout       = failover.Flag("pause-timeout", "Timeout for pausing PgBouncer").Default("5s").Duration()
 	failoverPauseExpiry        = failover.Flag("pause-expiry", "Time to wait before resuming PgBouncer after pause").Default("25s").Duration()
@@ -214,7 +215,7 @@ func main() {
 		// context. This ensures in the event of an operator SIGQUIT that we attempt to run
 		// cleanup tasks before actually quitting.
 		deferCtx, cancel := context.WithCancel(context.Background())
-		go func() { ctx.Done(); time.Sleep(10 * time.Second); cancel() }()
+		go func() { <-ctx.Done(); time.Sleep(*failoverCleanupTimeout); cancel() }()
 		defer cancel()
 
 		opt := pkgfailover.FailoverOptions{
