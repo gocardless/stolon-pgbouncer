@@ -30,16 +30,16 @@ clean:
 	rm -rvf $(PROG) $(PROG:%=%.linux_amd64)
 
 BASE_TAG=2019040101
-STOLON_NODE_TAG=2019040101
+STOLON_DEVELOPMENT_TAG=2019040101
 
 docker-base: docker/base/Dockerfile
 	docker build -t gocardless/stolon-pgbouncer-base:$(BASE_TAG) docker/base
 
-docker-stolon-node: docker/stolon-node/Dockerfile
-	docker build -t gocardless/stolon-node:$(STOLON_NODE_TAG) docker/stolon-node
+docker-stolon-development: docker/stolon-development/Dockerfile
+	docker build -t gocardless/stolon-development:$(STOLON_DEVELOPMENT_TAG) docker/stolon-development
 
 publish-base: docker-base
 	docker push gocardless/stolon-pgbouncer-base:$(BASE_TAG)
 
-publish-stolon-node: docker-stolon-node
-	docker push gocardless/stolon-node:$(STOLON_NODE_TAG)
+publish-stolon-development: docker-stolon-development
+	docker push gocardless/stolon-development:$(STOLON_DEVELOPMENT_TAG)

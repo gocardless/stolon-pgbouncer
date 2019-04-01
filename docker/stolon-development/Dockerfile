@@ -25,4 +25,4 @@ RUN mkdir /data && chown -R postgres:postgres /data
 RUN rm -v /usr/local/bin/stolon-pgbouncer
 
 EXPOSE 5432 6432 7432 8080
-ENTRYPOINT ["supervisord", "-n", "-c", "/stolon-pgbouncer/docker/stolon-node/supervisord.conf"]
+ENTRYPOINT ["supervisord", "-n", "-c", "/stolon-pgbouncer/docker/stolon-development/supervisord.conf"]
