@@ -10,11 +10,15 @@ x-app-defaults: &appDefaults
 services:
   etcd-store:
     image: quay.io/coreos/etcd:v3.2.17
+    restart: on-failure
     entrypoint:
       - etcd
     command:
+      - --data-dir=/data
       - --listen-client-urls=http://0.0.0.0:2379
       - --advertise-client-urls=http://0.0.0.0:2379
+    volumes:
+      - etcd-store-data:/data
     ports:
       - "2379:2379"
     networks:
@@ -25,6 +29,7 @@ services:
   sentinel:
     build:
       context: docker/stolon-node
+    restart: on-failure
     depends_on:
       - etcd-store
     entrypoint:
@@ -37,6 +42,7 @@ services:
     hostname: pgbouncer
     build:
       context: docker/stolon-node
+    restart: on-failure
     user: postgres
     entrypoint:
       - /stolon-pgbouncer/bin/stolon-pgbouncer.linux_amd64
@@ -56,7 +62,9 @@ services:
     hostname: keeper0
     build:
       context: docker/stolon-node
+    restart: on-failure
     volumes:
+      - keeper0-data:/data
       - .:/stolon-pgbouncer
     depends_on:
       - sentinel
@@ -65,7 +73,9 @@ services:
     hostname: keeper1
     build:
       context: docker/stolon-node
+    restart: on-failure
     volumes:
+      - keeper1-data:/data
       - .:/stolon-pgbouncer
     depends_on:
       - sentinel
@@ -74,10 +84,21 @@ services:
     hostname: keeper2
     build:
       context: docker/stolon-node
+    restart: on-failure
     volumes:
+      - keeper2-data:/data
       - .:/stolon-pgbouncer
     depends_on:
       - sentinel
+
+# Persist etcd and keeper data across docker restarts. This enables our cluster
+# to outlive killing our containers, as the keepers otherwise complain that
+# their data went missing.
+volumes:
+  etcd-store-data:
+  keeper0-data:
+  keeper1-data:
+  keeper2-data:
 
 networks:
   default:

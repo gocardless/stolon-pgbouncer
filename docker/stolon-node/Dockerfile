@@ -26,6 +26,9 @@ ENV ETCDCTL_API=3 \
 # Cluster data is placed here, and required to be Postgres writeable
 RUN mkdir /data && chown -R postgres:postgres /data
 
+# We rely on our mounted binary and remove this to prevent people from getting
+# confused.
+RUN rm -v /usr/local/bin/stolon-pgbouncer
+
 EXPOSE 5432 6432 7432 8080
-ADD supervisord.conf /
-ENTRYPOINT ["supervisord", "-n", "-c", "/supervisord.conf"]
+ENTRYPOINT ["supervisord", "-n", "-c", "/stolon-pgbouncer/docker/stolon-node/supervisord.conf"]
