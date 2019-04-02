@@ -6,9 +6,6 @@ references:
     working_directory: /go/src/github.com/gocardless/stolon-pgbouncer
     docker:
       - image: &image gocardless/stolon-pgbouncer-circleci:2019040101
-        auth:
-          username: $DOCKER_USER
-          password: $DOCKER_PASS
   docker_postgres_build_image: &docker_postgres_build_image
     working_directory: /go/src/github.com/gocardless/stolon-pgbouncer
     docker:
@@ -16,9 +13,6 @@ references:
         environment:
           PGHOST: "127.0.0.1"
           PGUSER: "postgres"
-        auth:
-          username: $DOCKER_USER
-          password: $DOCKER_PASS
       - image: postgres:11.2
         environment:
           POSTGRES_USER: postgres
@@ -37,6 +31,16 @@ jobs:
           root: /go/src/github.com/gocardless/stolon-pgbouncer
           paths: ['bin/stolon-pgbouncer.linux_amd64']
 
+  # To understand this test flow, it's important to be aware of the following
+  # constraints:
+  #
+  #   - Our Circle image needs to run as root to install system deps
+  #   - GOPATH and GOROOT in the image are root owned, as is Ginkgo
+  #   - PgBouncer fatals whenever running as uid 0
+  #
+  # In an attempt to satisfy these restrictions, we first build the ginkgo test
+  # suites using the root user then invoke them as postgres. There are other
+  # ways to achieve this but this seemed the least fiddly.
   unit-integration:
     <<: *docker_postgres_build_image
     steps:
