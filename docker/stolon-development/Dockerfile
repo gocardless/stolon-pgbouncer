@@ -1,7 +1,7 @@
 # In addition to our base install of pgbouncer and postgresql-client, configure
 # all the dependencies we'll need across our docker-compose setup along with
 # convenience env vars to make stolon tooling function correctly.
-FROM gocardless/stolon-pgbouncer-base:2019040101
+FROM gocardless/stolon-pgbouncer-base:2019040201
 
 RUN set -x \
       && apt-get install -y curl etcd-client supervisor postgresql-11 \
@@ -19,10 +19,6 @@ ENV ETCDCTL_API=3 \
 
 # Cluster data is placed here, and required to be Postgres writeable
 RUN mkdir /data && chown -R postgres:postgres /data
-
-# We rely on our mounted binary and remove this to prevent people from getting
-# confused.
-RUN rm -v /usr/local/bin/stolon-pgbouncer
 
 EXPOSE 5432 6432 7432 8080
 ENTRYPOINT ["supervisord", "-n", "-c", "/stolon-pgbouncer/docker/stolon-development/supervisord.conf"]
