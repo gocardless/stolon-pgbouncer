@@ -5,7 +5,7 @@ references:
   docker_build_image: &docker_build_image
     working_directory: /go/src/github.com/gocardless/stolon-pgbouncer
     docker:
-      - image: &image gocardless/stolon-pgbouncer-circleci:2019040101
+      - image: &image gocardless/stolon-pgbouncer-circleci:2019040201
   docker_postgres_build_image: &docker_postgres_build_image
     working_directory: /go/src/github.com/gocardless/stolon-pgbouncer
     docker:

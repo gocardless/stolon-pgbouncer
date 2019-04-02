@@ -25,9 +25,9 @@ test:
 clean:
 	rm -rvf $(PROG) $(PROG:%=%.linux_amd64)
 
-BASE_TAG=2019040101
-CIRCLECI_TAG=2019040101
-STOLON_DEVELOPMENT_TAG=2019040101
+BASE_TAG=2019040201
+CIRCLECI_TAG=2019040201
+STOLON_DEVELOPMENT_TAG=2019040201
 
 docker-base: docker/base/Dockerfile
 	docker build -t gocardless/stolon-pgbouncer-base:$(BASE_TAG) docker/base

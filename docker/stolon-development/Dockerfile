@@ -1,7 +1,7 @@
 # In addition to our base install of pgbouncer and postgresql-client, configure
 # all the dependencies we'll need across our docker-compose setup along with
 # convenience env vars to make stolon tooling function correctly.
-FROM gocardless/stolon-pgbouncer-base:2019040101
+FROM gocardless/stolon-pgbouncer-base:2019040201
 
 RUN set -x \
       && apt-get install -y curl etcd-client supervisor postgresql-11 \
