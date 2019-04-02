@@ -3,7 +3,7 @@ version: "3.7"
 
 x-app-defaults: &appDefaults
   build:
-    context: docker/stolon-node
+    context: docker/stolon-development
   depends_on:
     - sentinel
 
@@ -28,7 +28,7 @@ services:
 
   sentinel:
     build:
-      context: docker/stolon-node
+      context: docker/stolon-development
     restart: on-failure
     depends_on:
       - etcd-store
@@ -41,14 +41,14 @@ services:
   pgbouncer:
     hostname: pgbouncer
     build:
-      context: docker/stolon-node
+      context: docker/stolon-development
     restart: on-failure
     user: postgres
     entrypoint:
       - /stolon-pgbouncer/bin/stolon-pgbouncer.linux_amd64
       - supervise
       - --enable-child-process
-      - --pgbouncer-config-template-file=/stolon-pgbouncer/docker/stolon-node/pgbouncer/pgbouncer.ini.template
+      - --pgbouncer-config-template-file=/stolon-pgbouncer/docker/stolon-development/pgbouncer/pgbouncer.ini.template
     volumes:
       - .:/stolon-pgbouncer
     ports:
@@ -61,7 +61,7 @@ services:
   keeper0:
     hostname: keeper0
     build:
-      context: docker/stolon-node
+      context: docker/stolon-development
     restart: on-failure
     volumes:
       - keeper0-data:/data
@@ -72,7 +72,7 @@ services:
   keeper1:
     hostname: keeper1
     build:
-      context: docker/stolon-node
+      context: docker/stolon-development
     restart: on-failure
     volumes:
       - keeper1-data:/data
@@ -83,7 +83,7 @@ services:
   keeper2:
     hostname: keeper2
     build:
-      context: docker/stolon-node
+      context: docker/stolon-development
     restart: on-failure
     volumes:
       - keeper2-data:/data

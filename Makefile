@@ -25,14 +25,24 @@ test:
 clean:
 	rm -rvf $(PROG) $(PROG:%=%.linux_amd64)
 
-docker-base: Dockerfile
-	docker build -t gocardless/stolon-pgbouncer:v1 .
+BASE_TAG=2019040101
+CIRCLECI_TAG=2019040101
+STOLON_DEVELOPMENT_TAG=2019040101
 
-docker-stolon-node: docker/stolon-node/Dockerfile
-	docker build -t gocardless/stolon-node:v1 docker/docker/stolon-node/Dockerfile
+docker-base: docker/base/Dockerfile
+	docker build -t gocardless/stolon-pgbouncer-base:$(BASE_TAG) docker/base
+
+docker-circleci: docker/circleci/Dockerfile
+	docker build -t gocardless/stolon-pgbouncer-circleci:$(CIRCLECI_TAG) docker/circleci
+
+docker-stolon-development: docker/stolon-development/Dockerfile
+	docker build -t gocardless/stolon-development:$(STOLON_DEVELOPMENT_TAG) docker/stolon-development
 
 publish-base: docker-base
-	docker push gocardless/stolon-pgbouncer:v1
+	docker push gocardless/stolon-pgbouncer-base:$(BASE_TAG)
 
-publish-stolon-node: docker-stolon-node
-	docker push gocardless/stolon-node:v1
+publish-circleci: docker-circleci
+	docker push gocardless/stolon-pgbouncer-circleci:$(CIRCLECI_TAG)
+
+publish-stolon-development: docker-stolon-development
+	docker push gocardless/stolon-development:$(STOLON_DEVELOPMENT_TAG)
