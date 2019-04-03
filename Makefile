@@ -1,4 +1,4 @@
-PROG=bin/stolon-pgbouncer
+PROG=bin/stolon-pgbouncer bin/stolon-pgbouncer-acceptance
 PROJECT=github.com/gocardless/stolon-pgbouncer
 VERSION=$(shell git rev-parse --short HEAD)-dev
 BUILD_COMMAND=go build -ldflags "-X main.Version=$(VERSION)"

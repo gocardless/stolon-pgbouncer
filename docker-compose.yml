@@ -1,12 +1,6 @@
 ---
 version: "3.7"
 
-x-app-defaults: &appDefaults
-  build:
-    context: docker/stolon-development
-  depends_on:
-    - sentinel
-
 services:
   etcd-store:
     image: quay.io/coreos/etcd:v3.2.17

@@ -10,12 +10,12 @@ RUN set -x \
       && rm -v /tmp/stolon.tar.gz
 
 ENV ETCDCTL_API=3 \
-    CLUSTER_NAME=main \
-    STOLONCTL_CLUSTER_NAME=main \
-    STORE_BACKEND=etcdv3 \
-    STOLONCTL_STORE_BACKEND=etcdv3 \
-    STORE_ENDPOINTS=etcd-store:2379 \
-    STOLONCTL_STORE_ENDPOINTS=etcd-store:2379
+      CLUSTER_NAME=main \
+      STOLONCTL_CLUSTER_NAME=main \
+      STORE_BACKEND=etcdv3 \
+      STOLONCTL_STORE_BACKEND=etcdv3 \
+      STORE_ENDPOINTS=etcd-store:2379 \
+      STOLONCTL_STORE_ENDPOINTS=etcd-store:2379
 
 # Cluster data is placed here, and required to be Postgres writeable
 RUN mkdir /data && chown -R postgres:postgres /data
