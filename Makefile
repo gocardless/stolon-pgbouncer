@@ -3,6 +3,10 @@ PROJECT=github.com/gocardless/stolon-pgbouncer
 VERSION=$(shell git rev-parse --short HEAD)-dev
 BUILD_COMMAND=go build -ldflags "-X main.Version=$(VERSION)"
 
+BASE_TAG=2019040201
+CIRCLECI_TAG=2019040303
+STOLON_DEVELOPMENT_TAG=2019040201
+
 .PHONY: all darwin linux test clean
 
 all: darwin linux
@@ -22,12 +26,18 @@ generate:
 test:
 	ginkgo -v -r
 
+test-acceptance: linux
+	docker-compose up -d
+	docker run --network stolon-pgbouncer_default       \
+						 -v $(shell pwd)/bin:/stolon-pgbouncer/bin/     \
+						 --rm                                     \
+						 --entrypoint ""                          \
+						 gocardless/stolon-development:$(STOLON_DEVELOPMENT_TAG) \
+						 /stolon-pgbouncer/bin/stolon-pgbouncer-acceptance.linux_amd64
+
+
 clean:
 	rm -rvf $(PROG) $(PROG:%=%.linux_amd64)
-
-BASE_TAG=2019040201
-CIRCLECI_TAG=2019040303
-STOLON_DEVELOPMENT_TAG=2019040201
 
 docker-base: docker/base/Dockerfile
 	docker build -t gocardless/stolon-pgbouncer-base:$(BASE_TAG) docker/base
