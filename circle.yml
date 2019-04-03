@@ -5,7 +5,7 @@ references:
   docker_build_image: &docker_build_image
     working_directory: /go/src/github.com/gocardless/stolon-pgbouncer
     docker:
-      - image: &image gocardless/stolon-pgbouncer-circleci:2019040201
+      - image: &image gocardless/stolon-pgbouncer-circleci:2019040303
   docker_postgres_build_image: &docker_postgres_build_image
     working_directory: /go/src/github.com/gocardless/stolon-pgbouncer
     docker:
@@ -26,10 +26,12 @@ jobs:
       - checkout
       - run:
           name: Build test binaries
-          command: make bin/stolon-pgbouncer.linux_amd64
+          command: make linux
       - persist_to_workspace:
           root: /go/src/github.com/gocardless/stolon-pgbouncer
-          paths: ['bin/stolon-pgbouncer.linux_amd64']
+          paths:
+            - bin/stolon-pgbouncer.linux_amd64
+            - bin/stolon-pgbouncer-acceptance.linux_amd64
 
   # To understand this test flow, it's important to be aware of the following
   # constraints:
@@ -51,6 +53,36 @@ jobs:
       - run:
           name: Run unit tests
           command: find pkg -type f -name '*.test' -printf "%h %f\n" | xargs -n2 sh -c 'cd $0 && su postgres -c ./$1'
+
+  acceptance:
+    machine: true
+    working_directory: /home/circleci/stolon-pgbouncer
+    steps:
+      - checkout
+      - attach_workspace:
+          at: /home/circleci/stolon-pgbouncer
+      - run:
+          name: Install an up-to-date Docker Compose
+          command: |
+            curl -L https://github.com/docker/compose/releases/download/1.24.0/docker-compose-`uname -s`-`uname -m` > ~/docker-compose
+            chmod +x ~/docker-compose
+            sudo mv ~/docker-compose /usr/local/bin/docker-compose
+      - run:
+          name: Set up docker-compose
+          command: docker-compose up --no-start
+      - run:
+          name: Start docker-compose
+          command: docker-compose up
+          background: true
+      - run:
+          name: Run acceptance test
+          command: |
+            docker run --network stolon-pgbouncer_default       \
+                       -v $(pwd)/bin:/stolon-pgbouncer/bin/     \
+                       --rm                                     \
+                       --entrypoint ""                          \
+                       gocardless/stolon-pgbouncer-circleci:2019040303 \
+                       /stolon-pgbouncer/bin/stolon-pgbouncer-acceptance.linux_amd64
 
   release:
     <<: *docker_build_image
@@ -79,6 +111,9 @@ workflows:
     jobs:
       - unit-integration
       - build
+      - acceptance:
+          requires:
+            - build
       - release:
           requires:
             - unit-integration

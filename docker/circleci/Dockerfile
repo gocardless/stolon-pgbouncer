@@ -36,3 +36,17 @@ RUN set -x \
       && curl "https://download.docker.com/linux/static/stable/x86_64/docker-17.06.2-ce.tgz" -o /tmp/docker.tar.gz \
       && tar xfvz /tmp/docker.tar.gz -C /usr/local/bin docker/docker --strip-components=1 \
       && rm -v /tmp/docker.tar.gz
+
+# stolonctl is used by the acceptance test
+RUN curl -fsL https://github.com/sorintlab/stolon/releases/download/v0.13.0/stolon-v0.13.0-linux-amd64.tar.gz -o /tmp/stolon.tar.gz \
+      && tar xfvz /tmp/stolon.tar.gz -C /usr/local/bin --wildcards '*/bin/*' --strip-components=2 \
+      && rm -v /tmp/stolon.tar.gz
+
+# The acceptance test uses these environment variables
+ENV ETCDCTL_API=3 \
+    CLUSTER_NAME=main \
+    STOLONCTL_CLUSTER_NAME=main \
+    STORE_BACKEND=etcdv3 \
+    STOLONCTL_STORE_BACKEND=etcdv3 \
+    STORE_ENDPOINTS=etcd-store:2379 \
+    STOLONCTL_STORE_ENDPOINTS=etcd-store:2379

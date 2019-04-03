@@ -26,7 +26,7 @@ clean:
 	rm -rvf $(PROG) $(PROG:%=%.linux_amd64)
 
 BASE_TAG=2019040201
-CIRCLECI_TAG=2019040201
+CIRCLECI_TAG=2019040303
 STOLON_DEVELOPMENT_TAG=2019040201
 
 docker-base: docker/base/Dockerfile
