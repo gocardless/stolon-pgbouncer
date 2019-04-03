@@ -135,6 +135,19 @@ func RunAcceptance(ctx context.Context, logger kitlog.Logger) { //, opt Acceptan
 		return masterAddress
 	}
 
+	getKeeperHealthStatus := func(client *clientv3.Client) []bool {
+		clusterData := getClusterdata(client)
+		statuses := make([]bool, 0)
+
+		for _, db := range clusterData.Dbs {
+			statuses = append(statuses, db.Status.Healthy)
+		}
+		return statuses
+	}
+
+	logger.Log("msg", "checking that all keepers are healthy before running failover")
+	Eventually(getKeeperHealthStatus(client)).Should(Equal([]bool{true, true, true}))
+
 	oldMaster := expectPgbouncerPointToMaster(getClusterdata(client))
 
 	logger.Log("msg", "running failover")
