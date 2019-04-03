@@ -47,6 +47,8 @@ func RunAcceptance(ctx context.Context, logger kitlog.Logger) { //, opt Acceptan
 
 		Eventually(
 			func() (err error) { conn, err = pgTryConnect(host, port); return },
+			time.Minute,
+			time.Second,
 		).Should(
 			Succeed(),
 		)
