@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -17,7 +18,22 @@ import (
 	"github.com/gocardless/stolon-pgbouncer/pkg/stolon"
 )
 
+// docker-compose exposes these ports on our host machine. This allows us to run our test
+// from the machine that is running docker, rather than from within the docker containers
+// themselves.
+var (
+	pgBouncerPorts = map[string]string{
+		"pgbouncer": "6432",
+		"keeper0":   "6433",
+		"keeper1":   "6434",
+		"keeper2":   "6435",
+	}
+)
+
 func RunAcceptance(ctx context.Context, logger kitlog.Logger) { //, opt AcceptanceOptions) {
+	// TODO: Is this comment correct? This function doesn't necessarily connect to the
+	// PgBouncer that goes through the master.
+	//
 	// Attempt a connection to PgBouncer which connects through to the master
 	// PostgreSQL database.
 	// Connection flow:
@@ -37,16 +53,16 @@ func RunAcceptance(ctx context.Context, logger kitlog.Logger) { //, opt Acceptan
 		return pgx.Connect(cfg)
 	}
 
-	// Repeatedly attempt to connect to PgBouncer proxied PostgreSQL, timing out
-	// after a given limit.
-	pgConnect := func(host, port string) (conn *pgx.Conn) {
+	// Repeatedly attempt to connect to PgBouncer proxied PostgreSQL, timing out after a
+	// given limit.
+	pgConnect := func(port string) (conn *pgx.Conn) {
 		defer func(begin time.Time) {
 			logger.Log("event", "pg.connect", "msg", "connected to PostgreSQL via PgBouncer",
 				"elapsed", time.Since(begin).Seconds())
 		}(time.Now())
 
 		Eventually(
-			func() (err error) { conn, err = pgTryConnect(host, port); return },
+			func() (err error) { conn, err = pgTryConnect("localhost", port); return },
 			time.Minute,
 			time.Second,
 		).Should(
@@ -57,7 +73,7 @@ func RunAcceptance(ctx context.Context, logger kitlog.Logger) { //, opt Acceptan
 	}
 
 	// PgBouncer Container
-	conn := pgConnect("stolon-pgbouncer_pgbouncer_1", "6432")
+	conn := pgConnect(pgBouncerPorts["pgbouncer"])
 
 	// Given a database connection, attempt to query the inet_server_addr, which can be used
 	// to identify which machine we're talking to. This is necessary to identify whether
@@ -80,12 +96,14 @@ func RunAcceptance(ctx context.Context, logger kitlog.Logger) { //, opt Acceptan
 	// Get cluster data
 	client := mustStore()
 
-	expectPgbouncerPointToMaster := func() string {
+	getClusterdata := func(client *clientv3.Client) *stolon.Clusterdata {
 		clusterdata, err := stolon.GetClusterdata(ctx, client, "stolon/cluster/main/clusterdata")
-		if err != nil {
-			kingpin.Fatalf("failed to get clusterdata: %s", err)
-		}
+		Expect(err).NotTo(HaveOccurred())
 
+		return clusterdata
+	}
+
+	expectPgbouncerPointToMaster := func(clusterdata *stolon.Clusterdata) string {
 		// Get current master IP address
 		master := clusterdata.Master()
 		masterAddress := master.Status.ListenAddress
@@ -96,11 +114,10 @@ func RunAcceptance(ctx context.Context, logger kitlog.Logger) { //, opt Acceptan
 			Equal(masterAddress),
 		)
 
-		// Connect directly to all PgBouncers on keepers
-		for _, db := range clusterdata.Dbs {
-			conn := pgConnect(db.Status.ListenAddress, "7432")
+		for host, port := range pgBouncerPorts {
+			conn := pgConnect(port)
 			connectedAddr := inetServerAddr(conn)
-			logger.Log("expect", "PgBouncer on keeper to proxy to master PostgreSQL", "keeper", db.Spec.KeeperUID, "masterAddress", masterAddress)
+			logger.Log("expect", "PgBouncer on keeper to proxy to master PostgreSQL", "keeper", host, "masterAddress", masterAddress)
 			Expect(connectedAddr).To(
 				Equal(masterAddress),
 			)
@@ -109,22 +126,27 @@ func RunAcceptance(ctx context.Context, logger kitlog.Logger) { //, opt Acceptan
 		return masterAddress
 	}
 
-	oldMaster := expectPgbouncerPointToMaster()
+	oldMaster := expectPgbouncerPointToMaster(getClusterdata(client))
 
 	logger.Log("msg", "running failover")
-	err := exec.Command("stolon-pgbouncer/bin/stolon-pgbouncer.linux_amd64", "failover", "--pause-expiry=1m").Run()
+
+	cmd := exec.CommandContext(ctx, "docker-compose", "exec", "pgbouncer", "/stolon-pgbouncer/bin/stolon-pgbouncer.linux_amd64", "failover", "--pause-expiry=1m")
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err := cmd.Run()
+
 	Expect(err).NotTo(HaveOccurred())
 
-	Expect(expectPgbouncerPointToMaster()).NotTo(
+	Expect(expectPgbouncerPointToMaster(getClusterdata(client))).NotTo(
 		Equal(oldMaster),
 	)
-
 }
 
 func mustStore() *clientv3.Client {
 	client, err := clientv3.New(
 		clientv3.Config{
-			Endpoints:            []string{"stolon-pgbouncer_etcd-store_1:2379"},
+			Endpoints:            []string{"localhost:2379"},
 			DialTimeout:          3 * time.Second,
 			DialKeepAliveTime:    30 * time.Second,
 			DialKeepAliveTimeout: 5 * time.Second,

@@ -68,21 +68,11 @@ jobs:
             chmod +x ~/docker-compose
             sudo mv ~/docker-compose /usr/local/bin/docker-compose
       - run:
-          name: Set up docker-compose
-          command: docker-compose up --no-start
+          name: Start docker-compose cluster
+          command: docker-compose up --detach
       - run:
-          name: Start docker-compose
-          command: docker-compose up
-          background: true
-      - run:
-          name: Run acceptance test
-          command: |
-            docker run --network stolon-pgbouncer_default       \
-                       -v $(pwd)/bin:/stolon-pgbouncer/bin/     \
-                       --rm                                     \
-                       --entrypoint ""                          \
-                       gocardless/stolon-pgbouncer-circleci:2019040303 \
-                       /stolon-pgbouncer/bin/stolon-pgbouncer-acceptance.linux_amd64
+          name: Run acceptance tests
+          command: bin/stolon-pgbouncer-acceptance.linux_amd64
 
   release:
     <<: *docker_build_image

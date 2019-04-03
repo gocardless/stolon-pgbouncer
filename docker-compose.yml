@@ -60,6 +60,8 @@ services:
     volumes:
       - keeper0-data:/data
       - .:/stolon-pgbouncer
+    ports:
+      - "6433:6432"
     depends_on:
       - sentinel
 
@@ -71,6 +73,8 @@ services:
     volumes:
       - keeper1-data:/data
       - .:/stolon-pgbouncer
+    ports:
+      - "6434:6432"
     depends_on:
       - sentinel
 
@@ -82,6 +86,8 @@ services:
     volumes:
       - keeper2-data:/data
       - .:/stolon-pgbouncer
+    ports:
+      - "6435:6432"
     depends_on:
       - sentinel
 
