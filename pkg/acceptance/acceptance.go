@@ -55,14 +55,23 @@ func RunAcceptance(ctx context.Context, logger kitlog.Logger) { //, opt Acceptan
 
 	// Repeatedly attempt to connect to PgBouncer proxied PostgreSQL, timing out after a
 	// given limit.
-	pgConnect := func(port string) (conn *pgx.Conn) {
+	pgConnect := func(port string) *pgx.Conn {
+		var (
+			conn *pgx.Conn
+			err  error
+		)
+
 		defer func(begin time.Time) {
 			logger.Log("event", "pg.connect", "msg", "connected to PostgreSQL via PgBouncer",
 				"elapsed", time.Since(begin).Seconds())
 		}(time.Now())
 
 		Eventually(
-			func() (err error) { conn, err = pgTryConnect("localhost", port); return },
+			func() error {
+				logger.Log("event", "pg.connect.poll", "msg", "attempting to connect to PostgreSQL via PgBouncer")
+				conn, err = pgTryConnect("localhost", port)
+				return err
+			},
 			time.Minute,
 			time.Second,
 		).Should(
