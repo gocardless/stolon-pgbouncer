@@ -68,11 +68,11 @@ jobs:
             chmod +x ~/docker-compose
             sudo mv ~/docker-compose /usr/local/bin/docker-compose
       - run:
-          name: Build container images for cluster
-          command: docker-compose build
+          name: Create docker-compose cluster
+          command: docker-compose up --no-start
       - run:
           name: Start docker-compose cluster
-          command: docker-compose up
+          command: docker-compose start
           background: true
       - run:
           name: Wait for cluster to become ready
