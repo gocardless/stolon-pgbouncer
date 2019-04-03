@@ -27,6 +27,7 @@ test:
 	ginkgo -v -r
 
 test-acceptance: linux
+	docker-compose up --no-start
 	docker-compose up -d
 	docker run --network stolon-pgbouncer_default       \
 						 -v $(shell pwd)/bin:/stolon-pgbouncer/bin/     \
