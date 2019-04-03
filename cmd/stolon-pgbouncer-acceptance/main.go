@@ -35,7 +35,11 @@ func main() {
 	SetDefaultEventuallyTimeout(time.Minute)
 	SetDefaultEventuallyPollingInterval(100 * time.Millisecond)
 
-	RunSpecs(new(testing.T), "stolon-pgbouncer")
+	if RunSpecs(new(testing.T), "stolon-pgbouncer") {
+		os.Exit(0)
+	} else {
+		os.Exit(1)
+	}
 }
 
 var _ = Specify("Acceptance", func() {
