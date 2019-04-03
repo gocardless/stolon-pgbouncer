@@ -68,8 +68,20 @@ jobs:
             chmod +x ~/docker-compose
             sudo mv ~/docker-compose /usr/local/bin/docker-compose
       - run:
+          name: Build container images for cluster
+          command: docker-compose build
+      - run:
           name: Start docker-compose cluster
-          command: docker-compose up --detach
+          command: docker-compose up
+          background: true
+      - run:
+          name: Wait for cluster to become ready
+          command: |
+            timeout 120 bash <<BASH
+              until timeout 1 docker exec stolon-pgbouncer_pgbouncer_1 psql -p 6432 -t -c "select 'Postgres is ready';"; do
+                sleep 5
+              done
+            BASH
       - run:
           name: Run acceptance tests
           command: bin/stolon-pgbouncer-acceptance.linux_amd64
