@@ -19,6 +19,11 @@ cluster, with stolon-pgbouncer installed.
 
 Running `docker-compose up` will start all the necessary dependencies.
 
+We store initial cluster specification and other stuff in docker volumes, which don't get
+destroyed by default when you run `docker-compose down`. Make sure to run `docker-compose
+down -v` to remove the volumes if you've changed any cluster settings in the `./docker`
+directory.
+
 ### Using stolonctl
 
 If you set the following environment variables then stolonctl can run from your
