@@ -1,9 +1,13 @@
-PROG=bin/stolon-pgbouncer
+PROG=bin/stolon-pgbouncer bin/stolon-pgbouncer-acceptance
 PROJECT=github.com/gocardless/stolon-pgbouncer
 VERSION=$(shell git rev-parse --short HEAD)-dev
 BUILD_COMMAND=go build -ldflags "-X main.Version=$(VERSION)"
 
-.PHONY: all darwin linux test clean
+BASE_TAG=2019040201
+CIRCLECI_TAG=2019040303
+STOLON_DEVELOPMENT_TAG=2019040201
+
+.PHONY: all darwin linux test clean docker-compose-up test-acceptance
 
 all: darwin linux
 darwin: $(PROG)
@@ -18,16 +22,18 @@ bin/%:
 generate:
 	go generate ./...
 
+docker-compose-up:
+	docker-compose up --detach
+
 # go get -u github.com/onsi/ginkgo/ginkgo
 test:
 	ginkgo -v -r
 
+test-acceptance: docker-compose-up linux
+	go run cmd/stolon-pgbouncer-acceptance/main.go
+
 clean:
 	rm -rvf $(PROG) $(PROG:%=%.linux_amd64)
-
-BASE_TAG=2019040201
-CIRCLECI_TAG=2019040201
-STOLON_DEVELOPMENT_TAG=2019040201
 
 docker-base: docker/base/Dockerfile
 	docker build -t gocardless/stolon-pgbouncer-base:$(BASE_TAG) docker/base

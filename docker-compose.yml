@@ -1,12 +1,6 @@
 ---
 version: "3.7"
 
-x-app-defaults: &appDefaults
-  build:
-    context: docker/stolon-development
-  depends_on:
-    - sentinel
-
 services:
   etcd-store:
     image: quay.io/coreos/etcd:v3.2.17
@@ -66,6 +60,8 @@ services:
     volumes:
       - keeper0-data:/data
       - .:/stolon-pgbouncer
+    ports:
+      - "6433:6432"
     depends_on:
       - sentinel
 
@@ -77,6 +73,8 @@ services:
     volumes:
       - keeper1-data:/data
       - .:/stolon-pgbouncer
+    ports:
+      - "6434:6432"
     depends_on:
       - sentinel
 
@@ -88,6 +86,8 @@ services:
     volumes:
       - keeper2-data:/data
       - .:/stolon-pgbouncer
+    ports:
+      - "6435:6432"
     depends_on:
       - sentinel
 
