@@ -43,6 +43,7 @@ services:
       - supervise
       - --enable-child-process
       - --pgbouncer-config-template-file=/stolon-pgbouncer/docker/stolon-development/pgbouncer/pgbouncer.ini.template
+      - --poll-interval=5s
     volumes:
       - .:/stolon-pgbouncer
     ports:
