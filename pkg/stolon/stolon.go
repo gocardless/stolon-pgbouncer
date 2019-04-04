@@ -84,6 +84,31 @@ func (c Clusterdata) SynchronousStandbys() []DB {
 	return dbs
 }
 
+func (c Clusterdata) AsynchronousStandbys() []DB {
+	dbs := []DB{}
+Loop:
+	for _, db := range c.Dbs {
+		if db.Spec.KeeperUID == c.Master().Spec.KeeperUID {
+			continue Loop
+		}
+		for _, sync := range c.SynchronousStandbys() {
+			if db.Spec.KeeperUID == sync.Spec.KeeperUID {
+				continue Loop
+			}
+		}
+		dbs = append(dbs, db)
+	}
+	return dbs
+}
+
+func (c Clusterdata) Databases() []DB {
+	dbs := []DB{}
+	for _, db := range c.Dbs {
+		dbs = append(dbs, db)
+	}
+	return dbs
+}
+
 func (c Clusterdata) ListenAddresses() []string {
 	var addrs = []string{}
 	for _, db := range c.Dbs {

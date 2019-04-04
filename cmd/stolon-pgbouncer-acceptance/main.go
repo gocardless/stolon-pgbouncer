@@ -26,15 +26,6 @@ func main() {
 		kingpin.Fatalf("%s, try --help", err)
 	}
 
-	logger = kitlog.NewLogfmtLogger(kitlog.NewSyncWriter(os.Stderr))
-	logger = kitlog.With(logger, "ts", kitlog.DefaultTimestampUTC, "caller", kitlog.DefaultCaller)
-	stdlog.SetOutput(kitlog.NewStdlibAdapter(logger))
-
-	RegisterFailHandler(Fail)
-
-	SetDefaultEventuallyTimeout(time.Minute)
-	SetDefaultEventuallyPollingInterval(100 * time.Millisecond)
-
 	if RunSpecs(new(testing.T), "stolon-pgbouncer") {
 		os.Exit(0)
 	} else {
@@ -42,7 +33,17 @@ func main() {
 	}
 }
 
-var _ = Specify("Acceptance", func() {
+var _ = Describe("Acceptance", func() {
+	logger = kitlog.NewLogfmtLogger(kitlog.NewSyncWriter(os.Stderr))
+	logger = kitlog.With(logger, "ts", kitlog.DefaultTimestampUTC, "caller", kitlog.DefaultCaller)
+
+	RegisterFailHandler(Fail)
+
+	SetDefaultEventuallyTimeout(time.Minute)
+	SetDefaultEventuallyPollingInterval(100 * time.Millisecond)
+
+	stdlog.SetOutput(kitlog.NewStdlibAdapter(logger))
+
 	acceptance.RunAcceptance(
 		context.Background(),
 		logger,
