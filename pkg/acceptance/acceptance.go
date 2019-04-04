@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alecthomas/kingpin"
 	"github.com/coreos/etcd/clientv3"
 	kitlog "github.com/go-kit/kit/log"
 	"github.com/jackc/pgx"
@@ -30,39 +29,32 @@ var (
 	}
 )
 
-func RunAcceptance(ctx context.Context, logger kitlog.Logger) { //, opt AcceptanceOptions) {
-	// TODO: Is this comment correct? This function doesn't necessarily connect to the
-	// PgBouncer that goes through the master.
-	//
-	// Attempt a connection to PgBouncer which connects through to the master
-	// PostgreSQL database.
-	// Connection flow:
-	// PgBouncer on PgBouncer container -> PgBouncer on master keeper node ->
-	// Stolon Proxy -> PostgreSQL
-	pgTryConnect := func(host, port string) (*pgx.Conn, error) {
-		cfg, err := pgx.ParseConnectionString(
-			fmt.Sprintf(
-				"user=postgres dbname=postgres host=%s port=%s "+
-					"connect_timeout=1 sslmode=disable",
-				host,
-				port,
-			),
-		)
-
-		Expect(err).NotTo(HaveOccurred())
-		return pgx.Connect(cfg)
-	}
-
-	// Repeatedly attempt to connect to PgBouncer proxied PostgreSQL, timing out after a
+func RunAcceptance(ctx context.Context, logger kitlog.Logger) {
+	// Repeatedly attempt to connect to PgBouncer on the given port, timing out after a
 	// given limit.
-	pgConnect := func(port string) (conn *pgx.Conn) {
+	pgConnect := func(port string) *pgx.Conn {
+		var conn *pgx.Conn
+
 		defer func(begin time.Time) {
 			logger.Log("event", "pg.connect", "msg", "connected to PostgreSQL via PgBouncer",
 				"elapsed", time.Since(begin).Seconds())
 		}(time.Now())
 
 		Eventually(
-			func() (err error) { conn, err = pgTryConnect("localhost", port); return },
+			func() error {
+				logger.Log("event", "pg.connect.poll", "msg", "attempting to connect to PostgreSQL via PgBouncer")
+				cfg, err := pgx.ParseConnectionString(
+					fmt.Sprintf(
+						"user=postgres dbname=postgres host=localhost port=%s "+
+							"connect_timeout=1 sslmode=disable",
+						port,
+					),
+				)
+
+				Expect(err).NotTo(HaveOccurred())
+				conn, err = pgx.Connect(cfg)
+				return err
+			},
 			time.Minute,
 			time.Second,
 		).Should(
@@ -74,6 +66,9 @@ func RunAcceptance(ctx context.Context, logger kitlog.Logger) { //, opt Acceptan
 
 	// PgBouncer Container
 	conn := pgConnect(pgBouncerPorts["pgbouncer"])
+
+	// Etcd client
+	client := mustStore()
 
 	// Given a database connection, attempt to query the inet_server_addr, which can be used
 	// to identify which machine we're talking to. This is necessary to identify whether
@@ -93,9 +88,7 @@ func RunAcceptance(ctx context.Context, logger kitlog.Logger) { //, opt Acceptan
 		return strings.SplitN(addr.String, "/", 2)[0]
 	}
 
-	// Get cluster data
-	client := mustStore()
-
+	// Given an etcd client, fetch the stolon cluster data
 	getClusterdata := func(client *clientv3.Client) *stolon.Clusterdata {
 		clusterdata, err := stolon.GetClusterdata(ctx, client, "stolon/cluster/main/clusterdata")
 		Expect(err).NotTo(HaveOccurred())
@@ -103,44 +96,65 @@ func RunAcceptance(ctx context.Context, logger kitlog.Logger) { //, opt Acceptan
 		return clusterdata
 	}
 
-	expectPgbouncerPointToMaster := func(clusterdata *stolon.Clusterdata) string {
-		// Get current master IP address
-		master := clusterdata.Master()
-		masterAddress := master.Status.ListenAddress
+	expectPgbouncerPointsToMaster := func(clusterdata *stolon.Clusterdata) string {
+		masterAddress := clusterdata.Master().Status.ListenAddress
 
-		logger.Log("expect", "PgBouncer container to proxy to master PostgreSQL", "masterAddress", masterAddress)
+		logger.Log("expect", "the PgBouncer container proxies to the master PostgreSQL", "masterAddress", masterAddress)
 		connectedAddress := inetServerAddr(conn)
-		Expect(connectedAddress).To(
-			Equal(masterAddress),
-		)
+		Expect(connectedAddress).To(Equal(masterAddress))
 
 		for host, port := range pgBouncerPorts {
 			conn := pgConnect(port)
 			connectedAddr := inetServerAddr(conn)
-			logger.Log("expect", "PgBouncer on keeper to proxy to master PostgreSQL", "keeper", host, "masterAddress", masterAddress)
-			Expect(connectedAddr).To(
-				Equal(masterAddress),
-			)
+			logger.Log("expect", "the PgBouncer on keeper to proxy to the master PostgreSQL", "keeper", host, "masterAddress", masterAddress)
+			Expect(connectedAddr).To(Equal(masterAddress))
 		}
 
 		return masterAddress
 	}
 
-	oldMaster := expectPgbouncerPointToMaster(getClusterdata(client))
+	getKeeperHealthStatus := func(client *clientv3.Client) []bool {
+		clusterData := getClusterdata(client)
+		statuses := make([]bool, 0)
 
-	logger.Log("msg", "running failover")
+		for _, db := range clusterData.Dbs {
+			statuses = append(statuses, db.Status.Healthy)
+		}
+		return statuses
+	}
 
-	cmd := exec.CommandContext(ctx, "docker-compose", "exec", "pgbouncer", "/stolon-pgbouncer/bin/stolon-pgbouncer.linux_amd64", "failover", "--pause-expiry=1m")
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	err := cmd.Run()
+	logClusterStatus := func() {
+		clusterData := getClusterdata(client)
+		syncStandbys := []string{}
+		for _, s := range clusterData.SynchronousStandbys() {
+			syncStandbys = append(syncStandbys, s.Spec.KeeperUID)
+		}
+		logger.Log("msg", "cluster status", "master", clusterData.Master().Spec.KeeperUID, "synchronous_standbys", strings.Join(syncStandbys, ","))
+	}
 
-	Expect(err).NotTo(HaveOccurred())
+	runFailover := func() {
+		logger.Log("msg", "running failover")
+		cmd := exec.CommandContext(ctx, "docker-compose", "exec", "pgbouncer", "/stolon-pgbouncer/bin/stolon-pgbouncer.linux_amd64", "failover", "--pause-expiry=1m")
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		err := cmd.Run()
+		Expect(err).NotTo(HaveOccurred())
+	}
 
-	Expect(expectPgbouncerPointToMaster(getClusterdata(client))).NotTo(
-		Equal(oldMaster),
-	)
+	logger.Log("msg", "checking that all keepers are healthy before running failover")
+	Eventually(getKeeperHealthStatus(client)).Should(Equal([]bool{true, true, true}))
+
+	logClusterStatus()
+
+	oldMaster := expectPgbouncerPointsToMaster(getClusterdata(client))
+
+	runFailover()
+
+	newMaster := expectPgbouncerPointsToMaster(getClusterdata(client))
+	Expect(newMaster).NotTo(Equal(oldMaster))
+
+	logClusterStatus()
 }
 
 func mustStore() *clientv3.Client {
@@ -153,9 +167,7 @@ func mustStore() *clientv3.Client {
 		},
 	)
 
-	if err != nil {
-		kingpin.Fatalf("failed to connect to etcd: %s", err)
-	}
+	Expect(err).NotTo(HaveOccurred())
 
 	return client
 }

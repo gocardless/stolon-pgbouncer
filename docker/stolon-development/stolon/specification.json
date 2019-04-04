@@ -1,6 +1,6 @@
 {
-	"initMode": "new",
-  "sleepInterval": "5s",
+  "initMode": "new",
+  "sleepInterval": "1s",
   "requestTimeout": "10s",
   "failInterval": "20s",
   "deadKeeperRemovalInterval": "48h",
