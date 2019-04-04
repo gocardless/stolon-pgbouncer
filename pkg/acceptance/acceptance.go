@@ -132,14 +132,14 @@ func RunAcceptance(ctx context.Context, logger kitlog.Logger) {
 		logger.Log("msg", "cluster status", "master", clusterData.Master().Spec.KeeperUID, "synchronous_standbys", strings.Join(syncStandbys, ","))
 	}
 
-	runFailover := func() {
+	runFailover := func(pauseExpiry string) error {
 		logger.Log("msg", "running failover")
 		cmd := exec.CommandContext(ctx, "docker-compose", "exec", "pgbouncer", "/stolon-pgbouncer/bin/stolon-pgbouncer.linux_amd64", "failover", "--pause-expiry=1m")
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		err := cmd.Run()
-		Expect(err).NotTo(HaveOccurred())
+		return err
 	}
 
 	logger.Log("msg", "checking that all keepers are healthy before running failover")
@@ -149,12 +149,32 @@ func RunAcceptance(ctx context.Context, logger kitlog.Logger) {
 
 	oldMaster := expectPgbouncerPointsToMaster(getClusterdata(client))
 
-	runFailover()
+	err := runFailover("1m")
+	Expect(err).NotTo(HaveOccurred())
 
 	newMaster := expectPgbouncerPointsToMaster(getClusterdata(client))
 	Expect(newMaster).NotTo(Equal(oldMaster))
 
 	logClusterStatus()
+
+	logger.Log("msg", "start transaction, preventing PgBouncer pause")
+	txact, err := conn.Begin()
+	Expect(err).NotTo(HaveOccurred())
+
+	oldMaster = newMaster
+
+	logger.Log("msg", "checking that all keepers are healthy before running failover")
+	Eventually(getKeeperHealthStatus(client)).Should(Equal([]bool{true, true, true}))
+
+	logger.Log("msg", "this failover should fail, due to the PgBouncer pause expiry")
+	err = runFailover("5s")
+	Expect(err).To(HaveOccurred())
+
+	newMaster = expectPgbouncerPointsToMaster(getClusterdata(client))
+	Expect(newMaster).To(Equal(oldMaster))
+
+	logger.Log("msg", "rollback transaction, allowing PgBouncer pause")
+	Expect(txact.Rollback()).To(Succeed())
 }
 
 func mustStore() *clientv3.Client {
