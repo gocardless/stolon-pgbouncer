@@ -1,8 +1,8 @@
 {
   "initMode": "new",
   "sleepInterval": "1s",
-  "requestTimeout": "10s",
-  "failInterval": "20s",
+  "requestTimeout": "2s",
+  "failInterval": "6s",
   "deadKeeperRemovalInterval": "48h",
   "maxStandbys": 20,
   "maxStandbysPerSender": 3,
@@ -11,9 +11,7 @@
   "minSynchronousStandbys": 1,
   "maxSynchronousStandbys": 1,
   "additionalWalSenders": 5,
-  "additionalMasterReplicationSlots": [
-
-  ],
+  "additionalMasterReplicationSlots": [],
   "mergePgParameters": true,
   "clusterRole": "master",
   "automaticPgRestart": false,
