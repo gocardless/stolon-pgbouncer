@@ -21,8 +21,7 @@ services:
           - etcd-store
 
   sentinel:
-    build:
-      context: docker/stolon-development
+    image: gocardless/stolon-development:2019040901
     restart: on-failure
     depends_on:
       - etcd-store
@@ -34,8 +33,7 @@ services:
 
   pgbouncer:
     hostname: pgbouncer
-    build:
-      context: docker/stolon-development
+    image: gocardless/stolon-development:2019040901
     restart: on-failure
     user: postgres
     entrypoint:
@@ -55,8 +53,7 @@ services:
 
   keeper0:
     hostname: keeper0
-    build:
-      context: docker/stolon-development
+    image: gocardless/stolon-development:2019040901
     restart: on-failure
     volumes:
       - keeper0-data:/data
@@ -68,8 +65,7 @@ services:
 
   keeper1:
     hostname: keeper1
-    build:
-      context: docker/stolon-development
+    image: gocardless/stolon-development:2019040901
     restart: on-failure
     volumes:
       - keeper1-data:/data
@@ -81,8 +77,7 @@ services:
 
   keeper2:
     hostname: keeper2
-    build:
-      context: docker/stolon-development
+    image: gocardless/stolon-development:2019040901
     restart: on-failure
     volumes:
       - keeper2-data:/data
