@@ -41,7 +41,6 @@ services:
     entrypoint:
       - /stolon-pgbouncer/bin/stolon-pgbouncer.linux_amd64
       - supervise
-      - --enable-child-process
       - --pgbouncer-config-template-file=/stolon-pgbouncer/docker/stolon-development/pgbouncer/pgbouncer.ini.template
       - --poll-interval=5s
     volumes:
