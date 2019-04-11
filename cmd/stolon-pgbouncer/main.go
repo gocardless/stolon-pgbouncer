@@ -68,6 +68,9 @@ var (
 	failoverPauseExpiry        = failover.Flag("pause-expiry", "Time to wait before resuming PgBouncer after pause").Default("25s").Duration()
 	failoverResumeTimeout      = failover.Flag("resume-timeout", "Timeout for issuing PgBouncer resumes").Default("5s").Duration()
 	failoverStolonctlTimeout   = failover.Flag("stolonctl-timeout", "Timeout for executing stolonctl commands").Default("5s").Duration()
+
+	healthcheck                 = app.Command("healthcheck", "Healthcheck the local PgBouncer")
+	healthcheckPgBouncerOptions = newPgBouncerOptions(healthcheck)
 )
 
 type stolonOptions struct {
@@ -185,6 +188,18 @@ func main() {
 	}()
 
 	switch command {
+	case healthcheck.FullCommand():
+		var logger = kitlog.With(logger, "component", "healthcheck")
+		pgBouncer := mustPgBouncer(healthcheckPgBouncerOptions)
+		_, err := pgBouncer.ShowDatabases(ctx)
+		if err != nil {
+			logger.Log("event", "healthcheck.failure", "error", err.Error())
+			os.Exit(1)
+		} else {
+			logger.Log("event", "healthcheck.success")
+			os.Exit(0)
+		}
+
 	case failover.FullCommand():
 		client := mustStore(failoverStolonOptions)
 		stopt := failoverStolonOptions
