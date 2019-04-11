@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -99,7 +100,11 @@ func (f *Failover) HealthCheckClients(ctx context.Context) error {
 		}
 
 		if status := resp.GetStatus(); status != HealthCheckResponse_HEALTHY {
-			return fmt.Errorf("client %s received non-healthy response: %s", endpoint, status.String())
+			errStr := strings.Builder{}
+			for _, c := range resp.GetComponents() {
+				fmt.Fprintf(&errStr, "%s: %s\n", c.Name, c.Error)
+			}
+			return fmt.Errorf("client %s received non-healthy response: %s", endpoint, errStr.String())
 		}
 	}
 

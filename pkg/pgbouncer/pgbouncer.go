@@ -79,7 +79,7 @@ type Database struct {
 	CurrentConnections int64
 }
 
-// ShowDatabase extracts information from the SHOW DATABASE PgBouncer command, selecting
+// ShowDatabases extracts information from the SHOW DATABASES PgBouncer command, selecting
 // columns about database host details. This is quite cumbersome to write, due to the
 // inability to query select fields for database information, and the lack of guarantees
 // about the ordering of the columns returned from the command.

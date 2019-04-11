@@ -18,7 +18,15 @@ message HealthCheckResponse {
     UNHEALTHY = 2;
   }
 
+  message ComponentHealthCheck {
+    Status status = 1;
+    string Name = 2;
+    string Error = 3;
+  }
+
   Status status = 1;
+  repeated ComponentHealthCheck components = 2;
+
 }
 
 message PauseRequest {

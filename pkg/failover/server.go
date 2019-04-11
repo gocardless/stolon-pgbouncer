@@ -72,11 +72,24 @@ func (s *Server) NewAuthenticationInterceptor(token string) func(context.Context
 func (s *Server) HealthCheck(ctx context.Context, _ *Empty) (*HealthCheckResponse, error) {
 	resp := &HealthCheckResponse{Status: HealthCheckResponse_HEALTHY}
 
-	// TODO: Provide error in the health check response
-	// https://github.com/gocardless/stolon-pgbouncer/pull/11
-	if _, err := s.bouncer.ShowDatabases(ctx); err != nil {
-		resp.Status = HealthCheckResponse_UNHEALTHY
+	// PgBouncer Healthcheck
+	pgBouncerHealthCheck := &HealthCheckResponse_ComponentHealthCheck{
+		Name:   "PgBouncer",
+		Status: HealthCheckResponse_HEALTHY,
 	}
+
+	if _, err := s.bouncer.ShowDatabases(ctx); err != nil {
+		pgBouncerHealthCheck.Status = HealthCheckResponse_UNHEALTHY
+		pgBouncerHealthCheck.Error = err.Error()
+	}
+
+	resp.Components = []*HealthCheckResponse_ComponentHealthCheck{pgBouncerHealthCheck}
+
+	// We only have one component right now, so the overall status == the status of that
+	// component (PgBouncer)
+	// When we have multiple components, we may want
+	//   resp.Status = min(resp.Components.map(Status))
+	resp.Status = pgBouncerHealthCheck.Status
 
 	return resp, nil
 }

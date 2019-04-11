@@ -73,6 +73,12 @@ var (
 	failoverPauseExpiry        = failover.Flag("pause-expiry", "Time to wait before resuming PgBouncer after pause").Default("25s").Duration()
 	failoverResumeTimeout      = failover.Flag("resume-timeout", "Timeout for issuing PgBouncer resumes").Default("5s").Duration()
 	failoverStolonctlTimeout   = failover.Flag("stolonctl-timeout", "Timeout for executing stolonctl commands").Default("5s").Duration()
+
+	status              = app.Command("status", "Show information about the current status of the cluster")
+	statusStolonOptions = newStolonOptions(status)
+	statusToken         = status.Flag("token", "Authentication token for pauser API").Default("").Envar("STBOUNCER_FAILOVER_TOKEN").String()
+	statusPauserPort    = status.Flag("pauser-port", "Port on which the pauser APIs are listening").Default("8080").String()
+	statusTimeout       = status.Flag("timeout", "Timeout for fetching the status").Default("5s").Duration()
 )
 
 type stolonOptions struct {
@@ -213,6 +219,40 @@ func main() {
 	}()
 
 	switch command {
+	case status.FullCommand():
+		stopt := statusStolonOptions
+		client := mustStore(stopt)
+
+		clusterdataKey := fmt.Sprintf("%s/%s/clusterdata", stopt.Prefix, stopt.ClusterName)
+		clusterdata, err := stolon.GetClusterdata(ctx, client, clusterdataKey)
+		if err != nil {
+			kingpin.Fatalf("failed to get clusterdata: %s", err)
+		}
+
+		clients := map[string]pkgfailover.HealthCheckResponse{}
+		for _, db := range clusterdata.Dbs {
+			logger.Log("event", "client.dial", "client", db)
+			conn, err := grpc.Dial(fmt.Sprintf("%s:%s", db.Status.ListenAddress, *statusPauserPort), grpc.WithInsecure())
+			if err != nil {
+				kingpin.Fatalf("failed to dial client %s: %v", db, err)
+			}
+
+			// Annotate the request context with our token
+			logger.Log("event", "setting_pauser_token")
+			md := metadata.Pairs("authorization", *statusToken)
+			ctx = metadata.NewOutgoingContext(ctx, md)
+
+			client := pkgfailover.NewFailoverClient(conn)
+			clients[db.Spec.KeeperUID] = pkgfailover.HealthCheckResponse{}
+			resp, err := client.HealthCheck(ctx, &pkgfailover.Empty{})
+			if err != nil {
+				logger.Log("event", "healthcheck.failure", "msg", fmt.Sprintf("failed to health check client: %s", err.Error()))
+			} else {
+				clients[db.Spec.KeeperUID] = *resp
+			}
+		}
+		renderHealthCheck(clients)
+
 	case failover.FullCommand():
 		client := mustStore(failoverStolonOptions)
 		stopt := failoverStolonOptions
@@ -485,6 +525,22 @@ func main() {
 	}
 
 	logger.Log("event", "shutdown")
+}
+
+// Renders a HealthCheckResponse as human-readable text to stdout
+func renderHealthCheck(healthchecks map[string]pkgfailover.HealthCheckResponse) {
+	fmt.Printf("\n")
+	for client, hc := range healthchecks {
+		checkStr := strings.Builder{}
+		for _, check := range hc.Components {
+			fmt.Fprintf(&checkStr, "\tComponent: %s\tStatus: %s", check.Name, check.Status.String())
+			if check.Error != "" {
+				fmt.Fprintf(&checkStr, "\tError: %s", check.Error)
+			}
+			fmt.Fprint(&checkStr, "\n")
+		}
+		fmt.Printf("%s: %s\n%s\n", client, hc.Status.String(), checkStr.String())
+	}
 }
 
 // Set by goreleaser
