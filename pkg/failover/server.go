@@ -45,9 +45,15 @@ func (s *Server) LoggingInterceptor(ctx context.Context, req interface{}, info *
 }
 
 func (s *Server) HealthCheck(ctx context.Context, _ *Empty) (*HealthCheckResponse, error) {
-	return &HealthCheckResponse{
-		Status: HealthCheckResponse_HEALTHY,
-	}, nil
+	resp := &HealthCheckResponse{Status: HealthCheckResponse_HEALTHY}
+
+	// TODO: Provide error in the health check response
+	// https://github.com/gocardless/stolon-pgbouncer/pull/11
+	if _, err := s.bouncer.ShowDatabases(ctx); err != nil {
+		resp.Status = HealthCheckResponse_UNHEALTHY
+	}
+
+	return resp, nil
 }
 
 func (s *Server) Pause(ctx context.Context, req *PauseRequest) (resp *PauseResponse, err error) {

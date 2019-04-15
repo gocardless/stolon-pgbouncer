@@ -61,6 +61,7 @@ var (
 
 	failover                   = app.Command("failover", "Run a zero-downtime failover of the Postgres primary")
 	failoverStolonOptions      = newStolonOptions(failover)
+	failoverHealthCheckOnly    = failover.Flag("health-check-only", "Only run the health checks, don't failover").Default("false").Bool()
 	failoverPauserPort         = failover.Flag("pauser-port", "Port on which the pauser APIs are listening").Default("8080").String()
 	failoverHealthCheckTimeout = failover.Flag("health-check-timeout", "Timeout for health checking pause clients").Default("2s").Duration()
 	failoverCleanupTimeout     = failover.Flag("cleanup-timeout", "Timeout for running deferred cleanup operations").Default("10s").Duration()
@@ -228,7 +229,15 @@ func main() {
 			StolonctlTimeout:   *failoverStolonctlTimeout,
 		}
 
-		if err := pkgfailover.NewFailover(logger, client, clients, stolonctl, opt).Run(ctx, deferCtx); err != nil {
+		failover := pkgfailover.NewFailover(logger, client, clients, stolonctl, opt)
+
+		if *failoverHealthCheckOnly {
+			err = failover.HealthCheckClients(ctx)
+		} else {
+			err = failover.Run(ctx, deferCtx)
+		}
+
+		if err != nil {
 			logger.Log("error", err, "msg", "exiting with error")
 			os.Exit(1)
 		}
