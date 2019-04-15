@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 
 	"github.com/gocardless/stolon-pgbouncer/pkg/etcd"
 	pkgfailover "github.com/gocardless/stolon-pgbouncer/pkg/failover"
@@ -30,6 +31,7 @@ import (
 	"github.com/coreos/etcd/mvcc/mvccpb"
 	kitlog "github.com/go-kit/kit/log"
 	level "github.com/go-kit/kit/log/level"
+	"github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/oklog/run"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -57,10 +59,12 @@ var (
 
 	pauser                 = app.Command("pauser", "Serve the PgBouncer pause API")
 	pauserPgBouncerOptions = newPgBouncerOptions(pauser)
-	pauserBindAddress      = pauser.Flag("bind-address", "Listen address for the pause API").Default(":8080").String()
+	pauserToken            = pauser.Flag("token", "Authentication token for pauser API").Default("").Envar("STBOUNCER_FAILOVER_TOKEN").String()
+	pauserBindAddress      = pauser.Flag("bind-address", "Listen address for the pauser API").Default(":8080").String()
 
 	failover                   = app.Command("failover", "Run a zero-downtime failover of the Postgres primary")
 	failoverStolonOptions      = newStolonOptions(failover)
+	failoverToken              = failover.Flag("token", "Authentication token for pauser API").Default("").Envar("STBOUNCER_FAILOVER_TOKEN").String()
 	failoverHealthCheckOnly    = failover.Flag("health-check-only", "Only run the health checks, don't failover").Default("false").Bool()
 	failoverPauserPort         = failover.Flag("pauser-port", "Port on which the pauser APIs are listening").Default("8080").String()
 	failoverHealthCheckTimeout = failover.Flag("health-check-timeout", "Timeout for health checking pause clients").Default("2s").Duration()
@@ -203,7 +207,7 @@ func main() {
 
 		clients := map[string]pkgfailover.FailoverClient{}
 		for _, db := range clusterdata.Dbs {
-			logger.Log("event", "client.dial", "client", db)
+			logger.Log("event", "client_dial", "client", db)
 			conn, err := grpc.Dial(fmt.Sprintf("%s:%s", db.Status.ListenAddress, *failoverPauserPort), grpc.WithInsecure())
 			if err != nil {
 				kingpin.Fatalf("failed to dial client %s: %v", db, err)
@@ -212,10 +216,16 @@ func main() {
 			clients[db.Spec.KeeperUID] = pkgfailover.NewFailoverClient(conn)
 		}
 
+		logger.Log("event", "setting_pauser_token")
+		md := metadata.Pairs("authorization", *failoverToken)
+
+		// Annotate the request context with our token
+		ctx = metadata.NewOutgoingContext(ctx, md)
+
 		// Once our initial context is finished, wait some time before cancelling our defer
 		// context. This ensures in the event of an operator SIGQUIT that we attempt to run
 		// cleanup tasks before actually quitting.
-		deferCtx, cancel := context.WithCancel(context.Background())
+		deferCtx, cancel := context.WithCancel(metadata.NewOutgoingContext(context.Background(), md))
 		go func() { <-ctx.Done(); time.Sleep(*failoverCleanupTimeout); cancel() }()
 		defer cancel()
 
@@ -251,8 +261,21 @@ func main() {
 		}
 
 		server := pkgfailover.NewServer(logger, mustPgBouncer(pauserPgBouncerOptions))
-		grpcServer := grpc.NewServer(grpc.UnaryInterceptor(server.LoggingInterceptor))
+		grpcServer := grpc.NewServer(
+			grpc.UnaryInterceptor(
+				grpc_middleware.ChainUnaryServer(
+					server.LoggingInterceptor,
+					server.NewAuthenticationInterceptor(*pauserToken),
+				),
+			),
+		)
 		pkgfailover.RegisterFailoverServer(grpcServer, server)
+
+		go func() {
+			<-ctx.Done()
+			logger.Log("event", "graceful_shutdown")
+			grpcServer.GracefulStop()
+		}()
 
 		logger.Log("event", "listen", "address", *pauserBindAddress)
 		if err := grpcServer.Serve(listen); err != nil {

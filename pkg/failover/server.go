@@ -11,6 +11,7 @@ import (
 	uuid "github.com/satori/go.uuid"
 	grpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -42,6 +43,30 @@ func (s *Server) LoggingInterceptor(ctx context.Context, req interface{}, info *
 	}(time.Now())
 
 	return handler(ctx, req)
+}
+
+// NewAuthenticationInterceptor returns a UnaryServerInterceptor that validates the
+// context token before accepting any requests.
+func (s *Server) NewAuthenticationInterceptor(token string) func(context.Context, interface{}, *grpc.UnaryServerInfo, grpc.UnaryHandler) (interface{}, error) {
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+		if token != "" {
+			md, ok := metadata.FromIncomingContext(ctx)
+			if !ok {
+				return nil, grpc.Errorf(codes.Unauthenticated, "no metadata provided")
+			}
+
+			authHeader, ok := md["authorization"]
+			if !ok {
+				return nil, grpc.Errorf(codes.Unauthenticated, "missing authorization header")
+			}
+
+			if authHeader[0] != token {
+				return nil, grpc.Errorf(codes.Unauthenticated, "invalid access token")
+			}
+		}
+
+		return handler(ctx, req)
+	}
 }
 
 func (s *Server) HealthCheck(ctx context.Context, _ *Empty) (*HealthCheckResponse, error) {
