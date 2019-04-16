@@ -270,7 +270,7 @@ func main() {
 		ClusterIdentifier.
 			WithLabelValues(stopt.Prefix, stopt.ClusterName).
 			Set(md5float(stopt.Prefix + stopt.ClusterName))
-		StorePollInterval.Set(float64(*supervisePollInterval))
+		StorePollInterval.Set(float64(*supervisePollInterval / time.Second))
 
 		if !*superviseChildProcess {
 			logger.Log("msg", "not exec'ing PgBouncer- assuming external management")
