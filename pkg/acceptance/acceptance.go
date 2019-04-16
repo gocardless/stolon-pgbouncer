@@ -200,8 +200,6 @@ func pgConnect(logger kitlog.Logger, port string) *pgx.Conn {
 			conn, err = pgx.Connect(cfg)
 			return err
 		},
-		time.Minute,
-		time.Second,
 	).Should(
 		Succeed(), "connect to Postgres via a PgBouncer",
 	)
@@ -219,8 +217,6 @@ func mustClusterdata(ctx context.Context, client *clientv3.Client) *stolon.Clust
 
 			return
 		},
-		time.Minute,
-		time.Second,
 	).Should(
 		Succeed(), "timed out trying to retrieve clusterdata",
 	)
@@ -245,8 +241,6 @@ func mustStore() *clientv3.Client {
 
 			return
 		},
-		time.Minute,
-		time.Second,
 	).Should(
 		Succeed(), "connection to etcd could not be established",
 	)
