@@ -68,11 +68,11 @@ jobs:
             chmod +x ~/docker-compose
             sudo mv ~/docker-compose /usr/local/bin/docker-compose
       - run:
-          name: Create docker-compose cluster
-          command: docker-compose up --no-start
-      - run:
           name: Start docker-compose cluster
-          command: docker-compose start
+          command: docker-compose up -d
+      - run:
+          name: Attach to docker-compose cluster
+          command: docker-compose up
           background: true
       - run:
           name: Run acceptance tests

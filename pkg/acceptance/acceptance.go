@@ -205,10 +205,21 @@ func pgConnect(logger kitlog.Logger, port string) *pgx.Conn {
 
 // mustClusterdata returns the stolon cluster data stored in the provided etcd client
 func mustClusterdata(ctx context.Context, client *clientv3.Client) *stolon.Clusterdata {
-	clusterdata, err := stolon.GetClusterdata(ctx, client, "stolon/cluster/main/clusterdata")
-	Expect(err).NotTo(HaveOccurred())
+	var cd *stolon.Clusterdata
 
-	return clusterdata
+	Eventually(
+		func() (err error) {
+			cd, err = stolon.GetClusterdata(ctx, client, "stolon/cluster/main/clusterdata")
+
+			return
+		},
+		time.Minute,
+		time.Second,
+	).Should(
+		Succeed(), "timed out trying to retrieve clusterdata",
+	)
+
+	return cd
 }
 
 // mustStore returns an etcd client connection to our store
