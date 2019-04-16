@@ -44,6 +44,9 @@ func RunAcceptance(ctx context.Context, logger kitlog.Logger) {
 			Eventually(func() error { return mustClusterdata(ctx, client).CheckHealthy() }).Should(
 				Succeed(), "timed out waiting for all keepers to become healthy",
 			)
+
+			// Wait for all PgBouncers to update before we begin
+			expectPgBouncersPointToMaster(ctx, logger, client)
 		})
 
 		Describe("Failover", func() {
@@ -55,14 +58,8 @@ func RunAcceptance(ctx context.Context, logger kitlog.Logger) {
 				err = execCommand(ctx, "docker-compose", "exec", "pgbouncer", binary, "failover", "--pause-expiry", "50s")
 			})
 
-			AfterEach(func() {
-				logger.Log("msg", "verifying all PgBouncers point at master")
-				masterAddress := mustClusterdata(ctx, client).Master().Status.ListenAddress
-				for host, port := range pgBouncerPorts {
-					addr := inetServerAddr(pgConnect(logger, port))
-					Expect(addr).To(Equal(masterAddress), "PgBouncer on %s connect to master Postgres", host)
-				}
-			})
+			// Confirm PgBouncers have settled before marking test as success
+			AfterEach(func() { expectPgBouncersPointToMaster(ctx, logger, client) })
 
 			It("Successfully fails over to new master", func() {
 				Expect(err).NotTo(HaveOccurred(), "failover to be successful")
@@ -138,6 +135,15 @@ func RunAcceptance(ctx context.Context, logger kitlog.Logger) {
 			})
 		})
 	})
+}
+
+func expectPgBouncersPointToMaster(ctx context.Context, logger kitlog.Logger, client *clientv3.Client) {
+	logger.Log("msg", "expect all PgBouncers point at master")
+	masterAddress := mustClusterdata(ctx, client).Master().Status.ListenAddress
+	for host, port := range pgBouncerPorts {
+		addr := inetServerAddr(pgConnect(logger, port))
+		Expect(addr).To(Equal(masterAddress), "PgBouncer on %s connect to master Postgres", host)
+	}
 }
 
 // execCommand spawns a new process inheriting our current IO FDs

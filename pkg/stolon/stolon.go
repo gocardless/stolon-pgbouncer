@@ -81,6 +81,10 @@ func (c Clusterdata) Master() DB {
 
 // CheckHealthy returns an error if any of the keepers are marked as unhealthy
 func (c Clusterdata) CheckHealthy() error {
+	if reflect.DeepEqual(c.Master(), DB{}) {
+		return errors.New("no healthy master")
+	}
+
 	errors := []string{}
 	for _, db := range c.Dbs {
 		if !db.Status.Healthy {
