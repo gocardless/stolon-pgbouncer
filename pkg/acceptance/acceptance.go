@@ -33,6 +33,64 @@ var (
 
 func RunAcceptance(ctx context.Context, logger kitlog.Logger) {
 	Describe("stolon-pgbouncer", func() {
+		var (
+			client *clientv3.Client
+		)
+
+		BeforeEach(func() {
+			client = mustStore()
+
+			logger.Log("msg", "checking cluster is healthy before starting test")
+			Eventually(func() error { return mustClusterdata(ctx, client).CheckHealthy() }).Should(
+				Succeed(), "timed out waiting for all keepers to become healthy",
+			)
+		})
+
+		Describe("Failover", func() {
+			var (
+				err error
+			)
+
+			JustBeforeEach(func() {
+				err = execCommand(ctx, "docker-compose", "exec", "pgbouncer", binary, "failover", "--pause-expiry", "50s")
+			})
+
+			AfterEach(func() {
+				logger.Log("msg", "verifying all PgBouncers point at master")
+				masterAddress := mustClusterdata(ctx, client).Master().Status.ListenAddress
+				for host, port := range pgBouncerPorts {
+					addr := inetServerAddr(pgConnect(logger, port))
+					Expect(addr).To(Equal(masterAddress), "PgBouncer on %s connect to master Postgres", host)
+				}
+			})
+
+			It("Successfully fails over to new master", func() {
+				Expect(err).NotTo(HaveOccurred(), "failover to be successful")
+			})
+
+			Context("With open transaction", func() {
+				var (
+					conn  *pgx.Conn
+					txact *pgx.Tx
+				)
+
+				BeforeEach(func() {
+					conn = pgConnect(logger, pgBouncerPorts["pgbouncer"])
+
+					var txerr error
+					txact, txerr = conn.Begin()
+					Expect(txerr).NotTo(HaveOccurred(), "begin transaction")
+				})
+
+				It("Fails to failover without interrupting connection", func() {
+					Expect(err).To(HaveOccurred(), "failover to have failed due to open transaction")
+					Expect(txact.Rollback()).To(Succeed(), "transaction to rollback, as connection should have been uninterrupted")
+				})
+			})
+		})
+
+		// Placing the health check after the failover means we can rely on our docker
+		// services having been fully booted in CI.
 		Describe("Health check", func() {
 			var (
 				err   error
@@ -76,59 +134,6 @@ func RunAcceptance(ctx context.Context, logger kitlog.Logger) {
 
 				It("Fails the health check", func() {
 					Expect(err).To(HaveOccurred(), "health check should fail due to unresponsive keeper")
-				})
-			})
-		})
-
-		Describe("Failover", func() {
-			var (
-				err    error
-				client *clientv3.Client
-			)
-
-			JustBeforeEach(func() {
-				err = execCommand(ctx, "docker-compose", "exec", "pgbouncer", binary, "failover", "--pause-expiry", "50s")
-			})
-
-			BeforeEach(func() {
-				client = mustStore()
-
-				logger.Log("msg", "checking that all keepers are healthy before running failover")
-				Eventually(func() error { return mustClusterdata(ctx, client).CheckHealthy() }).Should(
-					Succeed(), "timed out waiting for all keepers to become healthy",
-				)
-			})
-
-			AfterEach(func() {
-				logger.Log("msg", "verifying all PgBouncers point at master")
-				masterAddress := mustClusterdata(ctx, client).Master().Status.ListenAddress
-				for host, port := range pgBouncerPorts {
-					addr := inetServerAddr(pgConnect(logger, port))
-					Expect(addr).To(Equal(masterAddress), "PgBouncer on %s connect to master Postgres", host)
-				}
-			})
-
-			It("Successfully fails over to new master", func() {
-				Expect(err).NotTo(HaveOccurred(), "failover to be successful")
-			})
-
-			Context("With open transaction", func() {
-				var (
-					conn  *pgx.Conn
-					txact *pgx.Tx
-				)
-
-				BeforeEach(func() {
-					conn = pgConnect(logger, pgBouncerPorts["pgbouncer"])
-
-					var txerr error
-					txact, txerr = conn.Begin()
-					Expect(txerr).NotTo(HaveOccurred(), "begin transaction")
-				})
-
-				It("Fails to failover without interrupting connection", func() {
-					Expect(err).To(HaveOccurred(), "failover to have failed due to open transaction")
-					Expect(txact.Rollback()).To(Succeed(), "transaction to rollback, as connection should have been uninterrupted")
 				})
 			})
 		})
@@ -208,16 +213,26 @@ func mustClusterdata(ctx context.Context, client *clientv3.Client) *stolon.Clust
 
 // mustStore returns an etcd client connection to our store
 func mustStore() *clientv3.Client {
-	client, err := clientv3.New(
-		clientv3.Config{
-			Endpoints:            []string{"localhost:2379"},
-			DialTimeout:          3 * time.Second,
-			DialKeepAliveTime:    30 * time.Second,
-			DialKeepAliveTimeout: 5 * time.Second,
-		},
-	)
+	var client *clientv3.Client
 
-	Expect(err).NotTo(HaveOccurred())
+	Eventually(
+		func() (err error) {
+			client, err = clientv3.New(
+				clientv3.Config{
+					Endpoints:            []string{"localhost:2379"},
+					DialTimeout:          3 * time.Second,
+					DialKeepAliveTime:    30 * time.Second,
+					DialKeepAliveTimeout: 5 * time.Second,
+				},
+			)
+
+			return
+		},
+		time.Minute,
+		time.Second,
+	).Should(
+		Succeed(), "connection to etcd could not be established",
+	)
 
 	return client
 }
