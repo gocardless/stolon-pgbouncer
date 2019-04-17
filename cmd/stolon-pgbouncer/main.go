@@ -134,11 +134,12 @@ var (
 			Help: "Number of outstanding connections in PgBouncer during shutdown",
 		},
 	)
-	HostHash = prometheus.NewGauge(
+	HostHash = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "stolon_pgbouncer_host_hash",
 			Help: "MD5 hash of the last successfully reloaded host value",
 		},
+		[]string{"keeper"},
 	)
 	StorePollInterval = prometheus.NewGauge(
 		prometheus.GaugeOpts{
@@ -424,8 +425,10 @@ func main() {
 							}
 
 							// Set metrics that power alerts. These values are only set when we've
-							// succeeded in reloading PgBouncer.
-							HostHash.Set(md5float(masterAddress))
+							// succeeded in reloading PgBouncer. We provide the keeper UID as our label
+							// value considering this will be more readable than our listen address.
+							HostHash.Reset()
+							HostHash.WithLabelValues(master.Spec.KeeperUID).Set(md5float(masterAddress))
 							LastReloadSeconds.Set(float64(time.Now().Unix()))
 
 							return nil
