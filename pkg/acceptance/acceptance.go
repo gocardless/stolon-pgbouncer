@@ -11,9 +11,9 @@ import (
 
 	"github.com/coreos/etcd/clientv3"
 	kitlog "github.com/go-kit/kit/log"
-	. "github.com/gocardless/stolon-pgbouncer/pkg/acceptance/matchers"
 	"github.com/gocardless/stolon-pgbouncer/pkg/stolon"
 	"github.com/jackc/pgx"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
@@ -22,6 +22,7 @@ import (
 // from the machine that is running docker, rather than from within the docker containers
 // themselves.
 var (
+	binary         = "/stolon-pgbouncer/bin/stolon-pgbouncer.linux_amd64"
 	pgBouncerPorts = map[string]string{
 		"pgbouncer": "6432",
 		"keeper0":   "6433",
@@ -31,210 +32,218 @@ var (
 )
 
 func RunAcceptance(ctx context.Context, logger kitlog.Logger) {
-	// Repeatedly attempt to connect to PgBouncer on the given port, timing out after a
-	// given limit.
-	pgConnect := func(port string) *pgx.Conn {
-		var conn *pgx.Conn
-
-		defer func(begin time.Time) {
-			logger.Log("event", "pg.connect", "msg", "connected to PostgreSQL via PgBouncer",
-				"elapsed", time.Since(begin).Seconds())
-		}(time.Now())
-
-		Eventually(
-			func() error {
-				logger.Log("event", "pg.connect.poll", "msg", "attempting to connect to PostgreSQL via PgBouncer")
-				cfg, err := pgx.ParseConnectionString(
-					fmt.Sprintf(
-						"user=postgres dbname=postgres host=localhost port=%s "+
-							"connect_timeout=1 sslmode=disable",
-						port,
-					),
-				)
-
-				Expect(err).NotTo(HaveOccurred())
-				conn, err = pgx.Connect(cfg)
-				return err
-			},
-			time.Minute,
-			time.Second,
-		).Should(
-			Succeed(),
+	Describe("stolon-pgbouncer", func() {
+		var (
+			client *clientv3.Client
 		)
 
-		return conn
-	}
+		BeforeEach(func() {
+			client = mustStore()
 
-	// PgBouncer Container
-	conn := pgConnect(pgBouncerPorts["pgbouncer"])
+			logger.Log("msg", "checking cluster is healthy before starting test")
+			Eventually(func() error { return mustClusterdata(ctx, client).CheckHealthy() }).Should(
+				Succeed(), "timed out waiting for all keepers to become healthy",
+			)
 
-	// Etcd client
-	client := mustStore()
-
-	// Given a database connection, attempt to query the inet_server_addr, which can be used
-	// to identify which machine we're talking to. This is necessary to identify whether
-	// PgBouncer has routed our connection correctly.
-	inetServerAddr := func(conn *pgx.Conn) string {
-		rows, err := conn.Query(`SELECT inet_server_addr();`)
-		Expect(err).NotTo(HaveOccurred())
-
-		defer rows.Close()
-
-		var addr sql.NullString
-
-		Expect(rows.Next()).To(BeTrue())
-		Expect(rows.Scan(&addr)).To(Succeed())
-
-		// Remove any network suffix from the IP (e.g., 172.17.0.3/32)
-		return strings.SplitN(addr.String, "/", 2)[0]
-	}
-
-	// Given an etcd client, fetch the stolon cluster data
-	getClusterData := func(client *clientv3.Client) *stolon.Clusterdata {
-		clusterdata, err := stolon.GetClusterdata(ctx, client, "stolon/cluster/main/clusterdata")
-		Expect(err).NotTo(HaveOccurred())
-
-		return clusterdata
-	}
-
-	expectPgbouncerPointsToMaster := func(clusterdata *stolon.Clusterdata) string {
-		masterAddress := clusterdata.Master().Status.ListenAddress
-
-		logger.Log("expect", "the PgBouncer container proxies to the master PostgreSQL", "masterAddress", masterAddress)
-		connectedAddress := inetServerAddr(conn)
-		Expect(connectedAddress).To(Equal(masterAddress))
-
-		for host, port := range pgBouncerPorts {
-			conn := pgConnect(port)
-			connectedAddr := inetServerAddr(conn)
-			logger.Log("expect", "the PgBouncer on keeper to proxy to the master PostgreSQL", "keeper", host, "masterAddress", masterAddress)
-			Expect(connectedAddr).To(Equal(masterAddress))
-		}
-
-		return masterAddress
-	}
-
-	getKeeperHealthStatus := func(dbs []stolon.DB) []bool {
-		statuses := []bool{}
-		for _, db := range dbs {
-			logger.Log("msg", "keeper status", "keeper", db.Spec.KeeperUID, "status", db.Status.Healthy)
-			statuses = append(statuses, db.Status.Healthy)
-		}
-		return statuses
-	}
-
-	logClusterStatus := func() {
-		clusterData := getClusterData(client)
-		syncStandbys := []string{}
-		for _, s := range clusterData.SynchronousStandbys() {
-			syncStandbys = append(syncStandbys, s.Spec.KeeperUID)
-		}
-		logger.Log("msg", "cluster status", "master", clusterData.Master().Spec.KeeperUID, "synchronous_standbys", strings.Join(syncStandbys, ","))
-	}
-
-	execCommand := func(ctx context.Context, command string, args ...string) error {
-		cmd := exec.CommandContext(ctx, command, args...)
-		cmd.Stdin = os.Stdin
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		return cmd.Run()
-	}
-
-	runFailover := func() error {
-		logger.Log("msg", "running failover")
-		return execCommand(ctx, "docker-compose", "exec", "pgbouncer", "/stolon-pgbouncer/bin/stolon-pgbouncer.linux_amd64", "failover")
-	}
-
-	Describe("stolon-pgbouncer", func() {
-		Specify("Failover", func() {
-			logger.Log("msg", "checking that all keepers are healthy before running failover")
-
-			Eventually(func() []bool {
-				return getKeeperHealthStatus(getClusterData(client).Databases())
-			}).Should(All(Equal(true)))
-
-			logClusterStatus()
-
-			oldMaster := expectPgbouncerPointsToMaster(getClusterData(client))
-
-			err := runFailover()
-			Expect(err).NotTo(HaveOccurred())
-
-			newMaster := expectPgbouncerPointsToMaster(getClusterData(client))
-			Expect(newMaster).NotTo(Equal(oldMaster))
-
-			logClusterStatus()
+			// Wait for all PgBouncers to update before we begin
+			expectPgBouncersPointToMaster(ctx, logger, client)
 		})
 
-		Specify("Failover with open transaction", func() {
-			logger.Log("msg", "start transaction, preventing PgBouncer pause")
-			txact, err := conn.Begin()
-			Expect(err).NotTo(HaveOccurred())
+		Describe("Failover", func() {
+			var (
+				err error
+			)
 
-			oldMaster := expectPgbouncerPointsToMaster(getClusterData(client))
+			JustBeforeEach(func() {
+				err = execCommand(ctx, "docker-compose", "exec", "pgbouncer", binary, "failover", "--pause-expiry", "50s")
+			})
 
-			logger.Log("msg", "checking that all keepers are healthy before running failover")
-			Eventually(func() []bool {
-				return getKeeperHealthStatus(getClusterData(client).Databases())
-			}).Should(All(Equal(true)))
+			// Confirm PgBouncers have settled before marking test as success
+			AfterEach(func() { expectPgBouncersPointToMaster(ctx, logger, client) })
 
-			logger.Log("msg", "this failover should fail, due to the PgBouncer pause expiry")
-			err = runFailover()
-			Expect(err).To(HaveOccurred())
+			It("Successfully fails over to new master", func() {
+				Expect(err).NotTo(HaveOccurred(), "failover to be successful")
+			})
 
-			newMaster := expectPgbouncerPointsToMaster(getClusterData(client))
-			Expect(newMaster).To(Equal(oldMaster))
+			Context("With open transaction", func() {
+				var (
+					conn  *pgx.Conn
+					txact *pgx.Tx
+				)
 
-			logger.Log("msg", "rollback transaction, allowing PgBouncer pause")
-			Expect(txact.Rollback()).To(Succeed())
+				BeforeEach(func() {
+					conn = pgConnect(logger, pgBouncerPorts["pgbouncer"])
 
-			logClusterStatus()
+					var txerr error
+					txact, txerr = conn.Begin()
+					Expect(txerr).NotTo(HaveOccurred(), "begin transaction")
+				})
+
+				It("Fails to failover without interrupting connection", func() {
+					Expect(err).To(HaveOccurred(), "failover to have failed due to open transaction")
+					Expect(txact.Rollback()).To(Succeed(), "transaction to rollback, as connection should have been uninterrupted")
+				})
+			})
 		})
 
-		Specify("Failover with failed asynchronous standbys", func() {
-			oldMaster := expectPgbouncerPointsToMaster(getClusterData(client))
+		// Placing the health check after the failover means we can rely on our docker
+		// services having been fully booted in CI.
+		Describe("Health check", func() {
+			var (
+				err   error
+				token string
+			)
 
-			for _, db := range getClusterData(client).AsynchronousStandbys() {
-				logger.Log("msg", "pausing keeper", "keeper", db.Spec.KeeperUID)
-				err := execCommand(ctx, "docker-compose", "pause", db.Spec.KeeperUID)
-				Expect(err).NotTo(HaveOccurred())
-			}
+			JustBeforeEach(func() {
+				err = execCommand(ctx, "docker-compose", "exec", "pgbouncer", binary, "failover", "--health-check-only", "--token", token)
+			})
 
-			logger.Log("msg", "checking that the async keepers are all unhealthy before running failover")
-			Eventually(func() []bool {
-				return getKeeperHealthStatus(getClusterData(client).AsynchronousStandbys())
-			},
-				time.Minute,
-				time.Second,
-			).Should(All(Equal(false)))
+			BeforeEach(func() { token = "failover-token" })
 
-			logger.Log("msg", "this failover should fail, due to the PgBouncer pause expiry")
-			err := runFailover()
-			Expect(err).To(HaveOccurred())
+			It("Successfully health checks", func() {
+				Expect(err).NotTo(HaveOccurred(), "expected successful health check")
+			})
 
-			for _, db := range getClusterData(client).AsynchronousStandbys() {
-				logger.Log("msg", "unpausing keeper", "keeper", db.Spec.KeeperUID)
-				err := execCommand(ctx, "docker-compose", "unpause", db.Spec.KeeperUID)
-				Expect(err).NotTo(HaveOccurred())
-			}
+			Context("With invalid token", func() {
+				BeforeEach(func() { token = "invalid-token" })
 
-			newMaster := expectPgbouncerPointsToMaster(getClusterData(client))
-			Expect(newMaster).To(Equal(oldMaster))
+				It("Fails health check", func() {
+					Expect(err).To(HaveOccurred(), "health check should not pass with invalid token")
+				})
+			})
+
+			Context("With an unresponsive endpoint", func() {
+				var (
+					targetKeeper = "keeper0"
+				)
+
+				BeforeEach(func() {
+					Expect(
+						execCommand(ctx, "docker-compose", "pause", targetKeeper),
+					).To(Succeed(), "pausing %s to succeed", targetKeeper)
+				})
+
+				AfterEach(func() {
+					Expect(
+						execCommand(ctx, "docker-compose", "unpause", targetKeeper),
+					).To(Succeed(), "unpausing %s to succeed", targetKeeper)
+				})
+
+				It("Fails the health check", func() {
+					Expect(err).To(HaveOccurred(), "health check should fail due to unresponsive keeper")
+				})
+			})
 		})
 	})
 }
 
-func mustStore() *clientv3.Client {
-	client, err := clientv3.New(
-		clientv3.Config{
-			Endpoints:            []string{"localhost:2379"},
-			DialTimeout:          3 * time.Second,
-			DialKeepAliveTime:    30 * time.Second,
-			DialKeepAliveTimeout: 5 * time.Second,
+func expectPgBouncersPointToMaster(ctx context.Context, logger kitlog.Logger, client *clientv3.Client) {
+	logger.Log("msg", "expect all PgBouncers point at master")
+	masterAddress := mustClusterdata(ctx, client).Master().Status.ListenAddress
+	for host, port := range pgBouncerPorts {
+		addr := inetServerAddr(pgConnect(logger, port))
+		Expect(addr).To(Equal(masterAddress), "PgBouncer on %s connect to master Postgres", host)
+	}
+}
+
+// execCommand spawns a new process inheriting our current IO FDs
+func execCommand(ctx context.Context, command string, args ...string) error {
+	cmd := exec.CommandContext(ctx, command, args...)
+
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	return cmd.Run()
+}
+
+// inetServerAddr queries the given database connection for inet_server_addr, which can be
+// used to identify which server we're executing queries on. If we're connect to a
+// PgBouncer, the result will be the server we're proxied to.
+func inetServerAddr(conn *pgx.Conn) string {
+	rows, err := conn.Query(`SELECT inet_server_addr();`)
+	Expect(err).NotTo(HaveOccurred())
+
+	defer rows.Close()
+
+	var addr sql.NullString
+
+	Expect(rows.Next()).To(BeTrue())
+	Expect(rows.Scan(&addr)).To(Succeed())
+
+	// Remove any network suffix from the IP (e.g., 172.17.0.3/32)
+	return strings.SplitN(addr.String, "/", 2)[0]
+}
+
+// pgConnect repeatedly attempts to connect to Postgres on the given port, timing out
+// after a given limit.
+func pgConnect(logger kitlog.Logger, port string) *pgx.Conn {
+	var conn *pgx.Conn
+
+	defer func(begin time.Time) {
+		logger.Log("event", "postgres_connect", "msg", "connected to PostgreSQL via PgBouncer",
+			"duration", time.Since(begin).Seconds())
+	}(time.Now())
+
+	Eventually(
+		func() error {
+			logger.Log("event", "postgres_poll", "msg", "attempting to connect to PostgreSQL via PgBouncer")
+			cfg, err := pgx.ParseConnectionString(
+				fmt.Sprintf(
+					"user=postgres dbname=postgres host=localhost port=%s "+
+						"connect_timeout=1 sslmode=disable",
+					port,
+				),
+			)
+
+			Expect(err).NotTo(HaveOccurred())
+			conn, err = pgx.Connect(cfg)
+			return err
 		},
+	).Should(
+		Succeed(), "connect to Postgres via a PgBouncer",
 	)
 
-	Expect(err).NotTo(HaveOccurred())
+	return conn
+}
+
+// mustClusterdata returns the stolon cluster data stored in the provided etcd client
+func mustClusterdata(ctx context.Context, client *clientv3.Client) *stolon.Clusterdata {
+	var cd *stolon.Clusterdata
+
+	Eventually(
+		func() (err error) {
+			cd, err = stolon.GetClusterdata(ctx, client, "stolon/cluster/main/clusterdata")
+
+			return
+		},
+	).Should(
+		Succeed(), "timed out trying to retrieve clusterdata",
+	)
+
+	return cd
+}
+
+// mustStore returns an etcd client connection to our store
+func mustStore() *clientv3.Client {
+	var client *clientv3.Client
+
+	Eventually(
+		func() (err error) {
+			client, err = clientv3.New(
+				clientv3.Config{
+					Endpoints:            []string{"localhost:2379"},
+					DialTimeout:          3 * time.Second,
+					DialKeepAliveTime:    30 * time.Second,
+					DialKeepAliveTimeout: 5 * time.Second,
+				},
+			)
+
+			return
+		},
+	).Should(
+		Succeed(), "connection to etcd could not be established",
+	)
 
 	return client
 }

@@ -40,7 +40,7 @@ var _ = Describe("Acceptance", func() {
 	RegisterFailHandler(Fail)
 
 	SetDefaultEventuallyTimeout(time.Minute)
-	SetDefaultEventuallyPollingInterval(100 * time.Millisecond)
+	SetDefaultEventuallyPollingInterval(time.Second)
 
 	stdlog.SetOutput(kitlog.NewStdlibAdapter(logger))
 

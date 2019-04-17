@@ -15,7 +15,8 @@ ENV ETCDCTL_API=3 \
     STORE_BACKEND=etcdv3 \
     STOLONCTL_STORE_BACKEND=etcdv3 \
     STORE_ENDPOINTS=etcd-store:2379 \
-    STOLONCTL_STORE_ENDPOINTS=etcd-store:2379
+    STOLONCTL_STORE_ENDPOINTS=etcd-store:2379 \
+    STBOUNCER_FAILOVER_TOKEN=failover-token
 
 # Cluster data is placed here, and required to be Postgres writeable
 RUN mkdir /data && chown -R postgres:postgres /data

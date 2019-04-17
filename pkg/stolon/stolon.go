@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"reflect"
+	"strings"
 
 	"github.com/coreos/etcd/clientv3"
 	"github.com/pkg/errors"
@@ -62,11 +64,39 @@ type DB struct {
 }
 
 func (d DB) String() string {
+	if reflect.DeepEqual(d, DB{}) {
+		return "unknown"
+	}
+
 	return fmt.Sprintf("%s (%s)", d.Spec.KeeperUID, d.Status.ListenAddress)
+}
+
+func (c Clusterdata) String() string {
+	return fmt.Sprintf("master=%s synchronous_standbys=[%v]", c.Master(), c.SynchronousStandbys())
 }
 
 func (c Clusterdata) Master() DB {
 	return c.Dbs[c.Proxy.Spec.MasterDbUID]
+}
+
+// CheckHealthy returns an error if any of the keepers are marked as unhealthy
+func (c Clusterdata) CheckHealthy() error {
+	if reflect.DeepEqual(c.Master(), DB{}) {
+		return errors.New("no healthy master")
+	}
+
+	errors := []string{}
+	for _, db := range c.Dbs {
+		if !db.Status.Healthy {
+			errors = append(errors, db.String())
+		}
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("unheathy keepers: %v", strings.Join(errors, ", "))
+	}
+
+	return nil
 }
 
 // SynchronousStandbys returns all the DBs that are configured as sync replicas to our
