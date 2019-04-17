@@ -118,7 +118,7 @@ var (
 	ClusterIdentifier = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "stolon_pgbouncer_cluster_identifier",
-			Help: "MD5 hash of the cluster name and store prefix",
+			Help: "Set to 1, is labelled with store_prefix and cluster_name",
 		},
 		[]string{"store_prefix", "cluster_name"},
 	)
@@ -290,9 +290,7 @@ func main() {
 		pgBouncer := mustPgBouncer(supervisePgBouncerOptions)
 		stopt := superviseStolonOptions
 
-		ClusterIdentifier.
-			WithLabelValues(stopt.Prefix, stopt.ClusterName).
-			Set(md5float(stopt.Prefix + stopt.ClusterName))
+		ClusterIdentifier.WithLabelValues(stopt.Prefix, stopt.ClusterName).Set(1)
 		StorePollInterval.Set(float64(*supervisePollInterval / time.Second))
 
 		if !*superviseChildProcess {
