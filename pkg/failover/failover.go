@@ -68,6 +68,7 @@ func NewFailover(logger kitlog.Logger, client *clientv3.Client, clients map[stri
 // present.
 func (f *Failover) Run(ctx context.Context, deferCtx context.Context) error {
 	return Pipeline(
+		Step(f.CheckClusterHealthy),
 		Step(f.HealthCheckClients),
 		Step(f.AcquireLock).Defer(f.ReleaseLock),
 		Step(f.Pause).Defer(f.Resume),
@@ -75,6 +76,15 @@ func (f *Failover) Run(ctx context.Context, deferCtx context.Context) error {
 	)(
 		ctx, deferCtx,
 	)
+}
+
+func (f *Failover) CheckClusterHealthy(ctx context.Context) error {
+	f.logger.Log("event", "check_cluster_healthy", "msg", "checking health of cluster")
+	clusterdata, err := stolon.GetClusterdata(ctx, f.client, f.opt.ClusterdataKey)
+	if err != nil {
+		return err
+	}
+	return clusterdata.CheckHealthy(1)
 }
 
 func (f *Failover) HealthCheckClients(ctx context.Context) error {

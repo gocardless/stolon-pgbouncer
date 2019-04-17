@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os/exec"
 	"reflect"
-	"strings"
 
 	"github.com/coreos/etcd/clientv3"
 	"github.com/pkg/errors"
@@ -34,37 +33,47 @@ func GetClusterdata(ctx context.Context, client *clientv3.Client, key string) (*
 // Clusterdata is a minimal extraction that we need from stolon. Whenever we upgrade
 // stolon, we should verify that this definition is compatible.
 type Clusterdata struct {
-	Cluster struct {
-		Spec struct {
-			SynchronousReplication bool `json:"synchronousReplication"`
-			MinSynchronousStandbys int  `json:"minSynchronousStandbys"`
-		} `json:"spec"`
-	} `json:"cluster"`
+	Cluster `json:"cluster"`
+	Proxy   `json:"proxy"`
+	Dbs     map[string]DB `json:"dbs"`
+}
 
-	Proxy struct {
-		Spec struct {
-			MasterDbUID string `json:"masterDbUid"`
-		} `json:"spec"`
-	} `json:"proxy"`
+type Cluster struct {
+	Spec ClusterSpec `json:"spec"`
+}
 
-	Dbs map[string]DB `json:"dbs"`
+type ClusterSpec struct {
+	SynchronousReplication bool `json:"synchronousReplication"`
+	MinSynchronousStandbys int  `json:"minSynchronousStandbys"`
+}
+
+type Proxy struct {
+	Spec ProxySpec `json:"spec"`
+}
+
+type ProxySpec struct {
+	MasterDbUID string `json:"masterDbUid"`
 }
 
 type DB struct {
-	Spec struct {
-		KeeperUID string `json:"keeperUID"`
-	} `json:"spec"`
-	Status struct {
-		Healthy                     bool     `json:"healthy"`
-		ListenAddress               string   `json:"listenAddress"`
-		Port                        string   `json:"port"`
-		SynchronousStandbys         []string `json:"synchronousStandbys"`
-		ExternalSynchronousStandbys []string `json:"externalSynchronousStandbys"`
-	} `json:"status"`
+	Spec   DBSpec   `json:"spec"`
+	Status DBStatus `json:"status"`
+}
+
+type DBSpec struct {
+	KeeperUID string `json:"keeperUID"`
+}
+
+type DBStatus struct {
+	Healthy                     bool     `json:"healthy"`
+	ListenAddress               string   `json:"listenAddress"`
+	Port                        string   `json:"port"`
+	SynchronousStandbys         []string `json:"synchronousStandbys"`
+	ExternalSynchronousStandbys []string `json:"externalSynchronousStandbys"`
 }
 
 func (d DB) String() string {
-	if reflect.DeepEqual(d, DB{}) {
+	if reflect.DeepEqual(d, &DB{}) {
 		return "unknown"
 	}
 
@@ -79,21 +88,38 @@ func (c Clusterdata) Master() DB {
 	return c.Dbs[c.Proxy.Spec.MasterDbUID]
 }
 
-// CheckHealthy returns an error if any of the keepers are marked as unhealthy
-func (c Clusterdata) CheckHealthy() error {
-	if reflect.DeepEqual(c.Master(), DB{}) {
-		return errors.New("no healthy master")
+// CheckHealthy returns an error if the stolon cluster isn't healthy. Healthy is
+// defined as:
+//   The master keeper is healthy, and
+//   The minimum number of synchronous standby keepers are healthy, and
+//   The number of healthy standbys (sync and async) - minimum number of synchronous standbys < the failure tolerance
+func (c Clusterdata) CheckHealthy(tolerateFailures int) error {
+	if reflect.DeepEqual(c.Master(), &DB{}) {
+		return errors.New("no master")
+	}
+	if !c.Master().Status.Healthy {
+		return errors.New("master unhealthy")
 	}
 
-	errors := []string{}
-	for _, db := range c.Dbs {
-		if !db.Status.Healthy {
-			errors = append(errors, db.String())
+	healthyStandbys := 0
+	for _, standby := range c.SynchronousStandbys() {
+		if standby.Status.Healthy {
+			healthyStandbys++
 		}
 	}
 
-	if len(errors) > 0 {
-		return fmt.Errorf("unheathy keepers: %v", strings.Join(errors, ", "))
+	if healthyStandbys < c.Cluster.Spec.MinSynchronousStandbys {
+		return errors.New("insufficient standbys")
+	}
+
+	for _, standby := range c.AsynchronousStandbys() {
+		if standby.Status.Healthy {
+			healthyStandbys++
+		}
+	}
+
+	if healthyStandbys-c.Cluster.Spec.MinSynchronousStandbys < tolerateFailures {
+		return errors.New("insufficient standbys for failure")
 	}
 
 	return nil
