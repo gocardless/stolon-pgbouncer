@@ -39,9 +39,9 @@ services:
     entrypoint:
       - /stolon-pgbouncer/bin/stolon-pgbouncer.linux_amd64
       - supervise
+      - --metrics-address=0.0.0.0
       - --enable-child-process
       - --pgbouncer-config-template-file=/stolon-pgbouncer/docker/stolon-development/pgbouncer/pgbouncer.ini.template
-      - --poll-interval=5s
     volumes:
       - .:/stolon-pgbouncer
     ports:
@@ -87,6 +87,35 @@ services:
     depends_on:
       - sentinel
 
+  prometheus:
+    image: prom/prometheus
+    volumes:
+      - ./docker/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./docker/observability/prometheus/rules.yml:/etc/prometheus/rules.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    restart: always
+    ports:
+      - 9090:9090
+
+  grafana:
+    image: grafana/grafana
+    depends_on:
+      - prometheus
+    volumes:
+      - ./docker/observability/grafana/dashboards:/var/lib/grafana/dashboards
+      - ./docker/observability/grafana/dashboard-provisioner.yml:/etc/grafana/provisioning/dashboards/provisioner.yml
+      - ./docker/observability/grafana/datasource-provisioner.yml:/etc/grafana/provisioning/datasources/provisioner.yml
+      - grafana-data:/var/lib/grafana
+    user: "472"
+    ports:
+      - 3000:3000
+    restart: always
+
 # Persist etcd and keeper data across docker restarts. This enables our cluster
 # to outlive killing our containers, as the keepers otherwise complain that
 # their data went missing.
@@ -95,6 +124,8 @@ volumes:
   keeper0-data:
   keeper1-data:
   keeper2-data:
+  prometheus-data:
+  grafana-data:
 
 networks:
   default:
