@@ -41,7 +41,7 @@ func RunAcceptance(ctx context.Context, logger kitlog.Logger) {
 			client = mustStore()
 
 			logger.Log("msg", "checking cluster is healthy before starting test")
-			Eventually(func() error { return mustClusterdata(ctx, client).CheckHealthy() }).Should(
+			Eventually(func() error { return mustClusterdata(ctx, client).CheckHealthy(1) }).Should(
 				Succeed(), "timed out waiting for all keepers to become healthy",
 			)
 
@@ -83,6 +83,34 @@ func RunAcceptance(ctx context.Context, logger kitlog.Logger) {
 					Expect(err).To(HaveOccurred(), "failover to have failed due to open transaction")
 					Expect(txact.Rollback()).To(Succeed(), "transaction to rollback, as connection should have been uninterrupted")
 				})
+			})
+
+			Context("With unhealthy keeper", func() {
+				var (
+					asyncKeeper string
+				)
+
+				BeforeEach(func() {
+					asyncKeeper = mustClusterdata(ctx, client).AsynchronousStandbys()[0].Spec.KeeperUID
+					Expect(
+						execCommand(ctx, "docker-compose", "exec", asyncKeeper, "pkill", "-STOP", "stolon-keeper"),
+					).To(Succeed(), "stopping %s stolon-keeper service", asyncKeeper)
+
+					Eventually(func() error { return mustClusterdata(ctx, client).CheckHealthy(1) }).Should(
+						Not(Succeed()), "timed out waiting for > min keepers to become unhealthy",
+					)
+				})
+
+				AfterEach(func() {
+					Expect(
+						execCommand(ctx, "docker-compose", "exec", asyncKeeper, "pkill", "-CONT", "stolon-keeper"),
+					).To(Succeed(), "starting %s stolon-keeper service", asyncKeeper)
+				})
+
+				It("Fails to failover", func() {
+					Expect(err).To(HaveOccurred(), "failover succeeded when it should have failed due to unhealthy keeper")
+				})
+
 			})
 		})
 
