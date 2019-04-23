@@ -134,24 +134,31 @@ var (
 			Help: "Number of outstanding connections in PgBouncer during shutdown",
 		},
 	)
-	HostHash = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "stolon_pgbouncer_host_hash",
-			Help: "MD5 hash of the last successfully reloaded host value",
-		},
-		[]string{"keeper"},
-	)
 	StorePollInterval = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Name: "stolon_pgbouncer_store_poll_interval",
 			Help: "Seconds between each store poll attempt",
 		},
 	)
-	LastReloadSeconds = prometheus.NewGauge(
+	StoreLastUpdateSeconds = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "stolon_pgbouncer_store_last_update_seconds",
+			Help: "Last time we received a value from our store as seconds since unix epoch",
+		},
+	)
+	LastKeeperSeconds = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "stolon_pgbouncer_last_keeper_seconds",
+			Help: "Most recent primary keeper update time since unix epoch in seconds",
+		},
+		[]string{"keeper"},
+	)
+	LastReloadSeconds = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "stolon_pgbouncer_last_reload_seconds",
 			Help: "Most recent PgBouncer reload time since unix epoch in seconds",
 		},
+		[]string{"keeper"},
 	)
 )
 
@@ -159,8 +166,9 @@ func init() {
 	prometheus.MustRegister(ClusterIdentifier)
 	prometheus.MustRegister(ShutdownSeconds)
 	prometheus.MustRegister(OutstandingConnections)
-	prometheus.MustRegister(HostHash)
 	prometheus.MustRegister(StorePollInterval)
+	prometheus.MustRegister(StoreLastUpdateSeconds)
+	prometheus.MustRegister(LastKeeperSeconds)
 	prometheus.MustRegister(LastReloadSeconds)
 }
 
@@ -188,7 +196,7 @@ func main() {
 
 	go func() {
 		<-ctx.Done()
-		ShutdownSeconds.Set(float64(time.Now().Unix()))
+		ShutdownSeconds.SetToCurrentTime()
 	}()
 
 	switch command {
@@ -381,6 +389,12 @@ func main() {
 
 			kvs, _ := etcd.NewStream(logger, client, streamOptions)
 
+			// Before we filter revisions, update our last seen metric so we can detect if etcd
+			// has become unresponsive.
+			kvs = streams.Tap(kvs, func(kv *mvccpb.KeyValue) {
+				StoreLastUpdateSeconds.SetToCurrentTime()
+			})
+
 			// etcd provides events out-of-order, and potentially duplicated. We need to use the
 			// RevisionFilter to ensure we only fold our events in their logical order, without
 			// duplicates.
@@ -399,6 +413,7 @@ func main() {
 
 							// It's possible for kv to be nil if our stream is being shutdown
 							if kv == nil {
+								logger.Log("event", "nil_kv", "msg", "nil kv value, channel is shutting down")
 								return nil
 							}
 
@@ -414,6 +429,11 @@ func main() {
 								return nil
 							}
 
+							// Set our metric to signal we've received a new keeper. This allows us to
+							// compare the time between seeing our new keeper and updating PgBouncer.
+							LastKeeperSeconds.Reset()
+							LastKeeperSeconds.WithLabelValues(master.Spec.KeeperUID).SetToCurrentTime()
+
 							logger.Log("event", "generate_configuration", "host", master)
 							if err := pgBouncer.GenerateConfig(masterAddress); err != nil {
 								return err
@@ -424,12 +444,11 @@ func main() {
 								return err
 							}
 
-							// Set metrics that power alerts. These values are only set when we've
-							// succeeded in reloading PgBouncer. We provide the keeper UID as our label
-							// value considering this will be more readable than our listen address.
-							HostHash.Reset()
-							HostHash.WithLabelValues(master.Spec.KeeperUID).Set(md5float(masterAddress))
-							LastReloadSeconds.Set(float64(time.Now().Unix()))
+							// We only set this metric when we've successfully reloaded PgBouncer with
+							// the new keeper value. Alerts should detect when this value is stale when
+							// compared to the last known update.
+							LastReloadSeconds.Reset()
+							LastReloadSeconds.WithLabelValues(master.Spec.KeeperUID).SetToCurrentTime()
 
 							return nil
 						},

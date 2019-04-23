@@ -9,6 +9,21 @@ import (
 
 type Filter func(kitlog.Logger, <-chan *mvccpb.KeyValue) <-chan *mvccpb.KeyValue
 
+// Tap intercepts the given channel and passes values into an operation function.
+func Tap(in <-chan *mvccpb.KeyValue, op func(*mvccpb.KeyValue)) <-chan *mvccpb.KeyValue {
+	out := make(chan *mvccpb.KeyValue)
+	go func() {
+		for kv := range in {
+			op(kv)
+			out <- kv
+		}
+
+		close(out)
+	}()
+
+	return out
+}
+
 // DedupeFilter creates a new channel from `in` that emits events provided the value is
 // changed from what was previously seen for that key.
 func DedupeFilter(logger kitlog.Logger, in <-chan *mvccpb.KeyValue) <-chan *mvccpb.KeyValue {
