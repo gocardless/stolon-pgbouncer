@@ -61,15 +61,15 @@ type DB struct {
 }
 
 type DBSpec struct {
-	KeeperUID string `json:"keeperUID"`
+	KeeperUID                   string   `json:"keeperUID"`
+	ExternalSynchronousStandbys []string `json:"externalSynchronousStandbys"`
 }
 
 type DBStatus struct {
-	Healthy                     bool     `json:"healthy"`
-	ListenAddress               string   `json:"listenAddress"`
-	Port                        string   `json:"port"`
-	SynchronousStandbys         []string `json:"synchronousStandbys"`
-	ExternalSynchronousStandbys []string `json:"externalSynchronousStandbys"`
+	Healthy             bool     `json:"healthy"`
+	ListenAddress       string   `json:"listenAddress"`
+	Port                string   `json:"port"`
+	SynchronousStandbys []string `json:"synchronousStandbys"`
 }
 
 func (d DB) String() string {
@@ -133,7 +133,7 @@ func (c Clusterdata) SynchronousStandbys() []DB {
 		dbs = append(dbs, c.Dbs[standbyUID])
 	}
 
-	for _, standbyUID := range c.Master().Status.ExternalSynchronousStandbys {
+	for _, standbyUID := range c.Master().Spec.ExternalSynchronousStandbys {
 		dbs = append(dbs, c.Dbs[standbyUID])
 	}
 
