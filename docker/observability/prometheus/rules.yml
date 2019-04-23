@@ -20,19 +20,20 @@ groups:
           summary: PgBouncers in this cluster are pointed at multiple masters
           description: |
 
-            The {{ $labels.cluster_name }} cluster has PgBouncers that are
-            pointed at more than one keeper. We only ever try to point at the
-            master, and we don't support multiple masters, so this means
-            something has gone astray.
+            The {{ $labels.cluster_name }} cluster has PgBouncers that are pointed at more
+            than one keeper. This should still be safe, as connections to replicas will be
+            proxied to the master by stolon-proxy. However we should clean up these
+            connections as we'll be bypassing the pooling restrictions imposed by the
+            master PgBouncer.
 
-            Jump into the dashboard to figure out which pod has gone wrong- it
+            Jump into the dashboard to figure out which pod has gone wrong - it
             will likely be highlighted in red, and won't have reloaded PgBouncer
             in some time.
 
-            Connections via this PgBouncer won't currently be functioning, so
-            your first action should be to kill the pod. If new pods come back
-            and immediately point elsewhere then you need to debug etcd or the
-            cluster itself.
+            To gracefully drain all connections from this pod, just delete it. It'll wait
+            up to 3 hours before shutting down to make sure all connections have closed.
+            If the new pod comes back and doesn't point itself to the master then you need
+            to debug etcd or the cluster itself.
 
       - alert: StolonPgBouncerPendingShutdown
         expr: >
