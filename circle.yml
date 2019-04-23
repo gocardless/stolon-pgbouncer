@@ -69,10 +69,10 @@ jobs:
             sudo mv ~/docker-compose /usr/local/bin/docker-compose
       - run:
           name: Start docker-compose cluster
-          command: docker-compose up -d
+          command: docker-compose up -d etcd-store sentinel pgbouncer keeper0 keeper1 keeper2
       - run:
-          name: Attach to docker-compose cluster
-          command: docker-compose up
+          name: Tail logs from docker-compose
+          command: docker-compose logs -f
           background: true
       - run:
           name: Run acceptance tests

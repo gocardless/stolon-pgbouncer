@@ -21,5 +21,5 @@ ENV ETCDCTL_API=3 \
 # Cluster data is placed here, and required to be Postgres writeable
 RUN mkdir /data && chown -R postgres:postgres /data
 
-EXPOSE 5432 6432 7432 8080
+EXPOSE 5432 6432 7432 8080 9446
 ENTRYPOINT ["supervisord", "-n", "-c", "/stolon-pgbouncer/docker/stolon-development/supervisord.conf"]
