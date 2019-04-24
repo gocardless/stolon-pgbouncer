@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/md5"
+	"crypto/tls"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -27,6 +28,7 @@ import (
 	"github.com/gocardless/stolon-pgbouncer/pkg/streams"
 
 	"github.com/alecthomas/kingpin"
+	tlshelpers "github.com/cloudflare/cfssl/helpers"
 	"github.com/coreos/etcd/clientv3"
 	"github.com/coreos/etcd/mvcc/mvccpb"
 	kitlog "github.com/go-kit/kit/log"
@@ -77,8 +79,18 @@ var (
 )
 
 type stolonOptions struct {
-	ClusterName, Backend, Prefix, Endpoints               string
-	Timeout, DialTimeout, KeepaliveTime, KeepaliveTimeout time.Duration
+	ClusterName      string
+	Backend          string
+	Prefix           string
+	Endpoints        string
+	CAFile           string
+	CertFile         string
+	KeyFile          string
+	SkipTLSVerify    bool
+	Timeout          time.Duration
+	DialTimeout      time.Duration
+	KeepaliveTime    time.Duration
+	KeepaliveTimeout time.Duration
 }
 
 func newStolonOptions(cmd *kingpin.CmdClause) *stolonOptions {
@@ -92,6 +104,10 @@ func newStolonOptions(cmd *kingpin.CmdClause) *stolonOptions {
 	cmd.Flag("store-dial-timeout", "Timeout when connecting to store").Default("3s").DurationVar(&opt.DialTimeout)
 	cmd.Flag("store-keepalive-time", "Time after which client pings server to check transport").Default("30s").DurationVar(&opt.KeepaliveTime)
 	cmd.Flag("store-keepalive-timeout", "Timeout for store keepalive probe").Default("5s").DurationVar(&opt.KeepaliveTimeout)
+	cmd.Flag("store-ca-file", "Verify certificates of HTTPS-enabled store servers using this CA bundle").Envar("STOLONCTL_STORE_CA_FILE").StringVar(&opt.CAFile)
+	cmd.Flag("store-cert-file", "Certificate file for client identification to store").Envar("STOLONCTL_STORE_CERT_FILE").StringVar(&opt.CertFile)
+	cmd.Flag("store-key", "Private key file for client identification to the store").Envar("STOLONCTL_STORE_KEY").StringVar(&opt.KeyFile)
+	cmd.Flag("store-skip-tls-verify", "Skip store server certificate validation").Envar("STOLONCTL_STORE_SKIP_TLS_VERIFY").BoolVar(&opt.SkipTLSVerify)
 
 	return opt
 }
@@ -483,6 +499,7 @@ func mustStore(opt *stolonOptions) *clientv3.Client {
 
 	client, err := clientv3.New(
 		clientv3.Config{
+			TLS:                  mustTLS(opt),
 			Endpoints:            strings.Split(opt.Endpoints, ","),
 			DialTimeout:          opt.DialTimeout,
 			DialKeepAliveTime:    opt.KeepaliveTime,
@@ -495,6 +512,36 @@ func mustStore(opt *stolonOptions) *clientv3.Client {
 	}
 
 	return client
+}
+
+func mustTLS(opt *stolonOptions) *tls.Config {
+	if opt.CertFile == "" && opt.KeyFile == "" && opt.CAFile == "" {
+		return nil // no TLS required
+	}
+
+	var cfg = &tls.Config{}
+
+	if opt.CertFile != "" && opt.KeyFile != "" {
+		cert, err := tlshelpers.LoadClientCertificate(opt.CertFile, opt.KeyFile)
+		if err != nil {
+			kingpin.Fatalf("failed to load client certs: %s", err)
+		}
+
+		cfg.Certificates = []tls.Certificate{*cert}
+	}
+
+	if opt.CAFile != "" {
+		roots, err := tlshelpers.LoadPEMCertPool(opt.CAFile)
+		if err != nil {
+			kingpin.Fatalf("failed to load CA file: %s", err)
+		}
+
+		cfg.RootCAs = roots
+	}
+
+	cfg.InsecureSkipVerify = opt.SkipTLSVerify
+
+	return cfg
 }
 
 // setupSignalHandler is similar to the community provided functions, but follows a more
