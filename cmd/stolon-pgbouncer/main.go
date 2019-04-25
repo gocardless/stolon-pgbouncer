@@ -416,6 +416,9 @@ func main() {
 			// duplicates.
 			kvs = streams.RevisionFilter(logger, kvs)
 
+			// Track the last reloaded so we can only reload PgBouncer when necessary
+			var lastReloadedAddress string
+
 			g.Add(
 				func() error {
 					return streams.RetryFold(
@@ -445,6 +448,11 @@ func main() {
 								return nil
 							}
 
+							// Only try reloading PgBouncer if the host has really changed
+							if lastReloadedAddress == masterAddress {
+								return nil
+							}
+
 							// Set our metric to signal we've received a new keeper. This allows us to
 							// compare the time between seeing our new keeper and updating PgBouncer.
 							LastKeeperSeconds.Reset()
@@ -459,6 +467,10 @@ func main() {
 							if err := pgBouncer.Reload(ctx); err != nil {
 								return err
 							}
+
+							// Mark what we've reloaded to, so we can avoid unnecessary PgBouncer
+							// reloads in response to the clusterdata (not the master) changing.
+							lastReloadedAddress = masterAddress
 
 							// We only set this metric when we've successfully reloaded PgBouncer with
 							// the new keeper value. Alerts should detect when this value is stale when
