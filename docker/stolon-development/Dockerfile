@@ -1,3 +1,15 @@
+# Temporarily use the GoCardless stolon fork to install the keeper. This enables
+# us to verify the metrics we're adding to the binaries.
+FROM golang:1.12 AS stolon-fork
+RUN set -x \
+      && go get -d -v github.com/sorintlab/stolon/cmd \
+      && cd "${GOPATH}/src/github.com/sorintlab/stolon" \
+      && git remote add gocardless https://github.com/gocardless/stolon \
+      && git fetch gocardless \
+      && git checkout b937766b4a8884b8823547a2ef3a46040f00d245 \
+      && go build -o stolon-keeper cmd/keeper/main.go
+
+
 # In addition to our base install of pgbouncer and postgresql-client, configure
 # all the dependencies we'll need across our docker-compose setup along with
 # convenience env vars to make stolon tooling function correctly.
@@ -8,6 +20,9 @@ RUN set -x \
       && curl -fsL https://github.com/sorintlab/stolon/releases/download/v0.13.0/stolon-v0.13.0-linux-amd64.tar.gz -o /tmp/stolon.tar.gz \
       && tar xfvz /tmp/stolon.tar.gz -C /usr/local/bin --wildcards '*/bin/*' --strip-components=2 \
       && rm -v /tmp/stolon.tar.gz
+
+# Load the GoCardless keeper fork
+COPY --from=stolon-fork /go/src/github.com/sorintlab/stolon/stolon-keeper /usr/local/bin/stolon-keeper
 
 ENV ETCDCTL_API=3 \
     CLUSTER_NAME=main \
@@ -21,5 +36,11 @@ ENV ETCDCTL_API=3 \
 # Cluster data is placed here, and required to be Postgres writeable
 RUN mkdir /data && chown -R postgres:postgres /data
 
-EXPOSE 5432 6432 7432 8080 9446
+# 5432 => Postgres
+# 6432 => PgBouncer
+# 7432 => stolon-proxy
+# 8080 => stolon-pgbouncer (pauser)
+# 9459 => stolon-keeper (metrics)
+# 9446 => stolon-pgbouncer (metrics)
+EXPOSE 5432 6432 7432 8080 9459 9446
 ENTRYPOINT ["supervisord", "-n", "-c", "/stolon-pgbouncer/docker/stolon-development/supervisord.conf"]
