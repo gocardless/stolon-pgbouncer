@@ -133,7 +133,7 @@ func newPgBouncerOptions(cmd *kingpin.CmdClause) *pgBouncerOptions {
 var (
 	ClusterIdentifier = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "stolon_pgbouncer_cluster_identifier",
+			Name: "stolon_cluster_identifier",
 			Help: "Set to 1, is labelled with store_prefix and cluster_name",
 		},
 		[]string{"store_prefix", "cluster_name"},

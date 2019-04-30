@@ -81,7 +81,7 @@
       ],
       "targets": [
         {
-          "expr": "max by (pod_name, cluster_name, store_prefix, keeper) (\n  time() - stolon_pgbouncer_store_last_update_seconds * on(pod_name) group_left(cluster_name, store_prefix, keeper) (\n    stolon_pgbouncer_cluster_identifier{cluster_name=\"$cluster\"} != ignoring(cluster_name, store_prefix, keeper) group_left(keeper) stolon_pgbouncer_last_reload_seconds\n  )\n)",
+          "expr": "max by (pod_name, cluster_name, store_prefix, keeper) (\n  time() - stolon_pgbouncer_store_last_update_seconds * on(pod_name) group_left(cluster_name, store_prefix, keeper) (\n    stolon_cluster_identifier{cluster_name=\"$cluster\"} != ignoring(cluster_name, store_prefix, keeper) group_left(keeper) stolon_pgbouncer_last_reload_seconds\n  )\n)",
           "format": "table",
           "instant": true,
           "intervalFactor": 1,
@@ -134,7 +134,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "count by (keeper) (\n  stolon_pgbouncer_last_reload_seconds and ignoring(cluster_name, store_prefix, keeper) stolon_pgbouncer_cluster_identifier{cluster_name=\"$cluster\"}\n)",
+          "expr": "count by (keeper) (\n  stolon_pgbouncer_last_reload_seconds and ignoring(cluster_name, store_prefix, keeper) stolon_cluster_identifier{cluster_name=\"$cluster\"}\n)",
           "format": "time_series",
           "intervalFactor": 1,
           "legendFormat": "{{ keeper }}",
@@ -222,7 +222,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "time() - ((stolon_pgbouncer_store_last_update_seconds > 0) and ignoring(cluster_name, store_prefix, keeper) stolon_pgbouncer_cluster_identifier{cluster_name=\"$cluster\"})",
+          "expr": "time() - ((stolon_pgbouncer_store_last_update_seconds > 0) and ignoring(cluster_name, store_prefix, keeper) stolon_cluster_identifier{cluster_name=\"$cluster\"})",
           "format": "time_series",
           "intervalFactor": 1,
           "legendFormat": "{{ pod_name }}",
@@ -318,7 +318,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "time() - ((stolon_pgbouncer_last_reload_seconds > 0) and ignoring(cluster_name, store_prefix, keeper) stolon_pgbouncer_cluster_identifier{cluster_name=\"$cluster\"})",
+          "expr": "time() - ((stolon_pgbouncer_last_reload_seconds > 0) and ignoring(cluster_name, store_prefix, keeper) stolon_cluster_identifier{cluster_name=\"$cluster\"})",
           "format": "time_series",
           "intervalFactor": 1,
           "legendFormat": "{{ pod_name }}",
@@ -414,7 +414,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "time() - ((stolon_pgbouncer_shutdown_seconds > 0) and ignoring(cluster_name, store_prefix) stolon_pgbouncer_cluster_identifier{cluster_name=\"$cluster\"})",
+          "expr": "time() - ((stolon_pgbouncer_shutdown_seconds > 0) and ignoring(cluster_name, store_prefix) stolon_cluster_identifier{cluster_name=\"$cluster\"})",
           "format": "time_series",
           "intervalFactor": 1,
           "legendFormat": "{{ pod_name }}",
@@ -511,14 +511,14 @@
           "value": "lab-production/main"
         },
         "datasource": "$datasource",
-        "definition": "label_values(stolon_pgbouncer_cluster_identifier, cluster_name)",
+        "definition": "label_values(stolon_cluster_identifier, cluster_name)",
         "hide": 0,
         "includeAll": false,
         "label": null,
         "multi": false,
         "name": "cluster",
         "options": [],
-        "query": "label_values(stolon_pgbouncer_cluster_identifier, cluster_name)",
+        "query": "label_values(stolon_cluster_identifier, cluster_name)",
         "refresh": 2,
         "regex": "",
         "skipUrlSync": false,
