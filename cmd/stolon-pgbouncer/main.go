@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"crypto/md5"
 	"crypto/tls"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	stdlog "log"
@@ -131,45 +129,45 @@ func newPgBouncerOptions(cmd *kingpin.CmdClause) *pgBouncerOptions {
 }
 
 var (
-	ClusterIdentifier = prometheus.NewGaugeVec(
+	clusterIdentifier = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "stolon_pgbouncer_cluster_identifier",
+			Name: "stolon_cluster_identifier",
 			Help: "Set to 1, is labelled with store_prefix and cluster_name",
 		},
 		[]string{"store_prefix", "cluster_name"},
 	)
-	ShutdownSeconds = prometheus.NewGauge(
+	shutdownSeconds = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Name: "stolon_pgbouncer_shutdown_seconds",
 			Help: "Shutdown time (received termination signal) since unix epoch in seconds",
 		},
 	)
-	OutstandingConnections = prometheus.NewGauge(
+	outstandingConnections = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Name: "stolon_pgbouncer_outstanding_connections",
 			Help: "Number of outstanding connections in PgBouncer during shutdown",
 		},
 	)
-	StorePollInterval = prometheus.NewGauge(
+	storePollInterval = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Name: "stolon_pgbouncer_store_poll_interval",
 			Help: "Seconds between each store poll attempt",
 		},
 	)
-	StoreLastUpdateSeconds = prometheus.NewGauge(
+	storeLastUpdateSeconds = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Name: "stolon_pgbouncer_store_last_update_seconds",
 			Help: "Last time we received a value from our store as seconds since unix epoch",
 		},
 	)
-	LastKeeperSeconds = prometheus.NewGaugeVec(
+	lastKeeperSeconds = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "stolon_pgbouncer_last_keeper_seconds",
 			Help: "Most recent primary keeper update time since unix epoch in seconds",
 		},
 		[]string{"keeper"},
 	)
-	LastReloadSeconds = prometheus.NewGaugeVec(
+	lastReloadSeconds = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "stolon_pgbouncer_last_reload_seconds",
 			Help: "Most recent PgBouncer reload time since unix epoch in seconds",
@@ -179,13 +177,13 @@ var (
 )
 
 func init() {
-	prometheus.MustRegister(ClusterIdentifier)
-	prometheus.MustRegister(ShutdownSeconds)
-	prometheus.MustRegister(OutstandingConnections)
-	prometheus.MustRegister(StorePollInterval)
-	prometheus.MustRegister(StoreLastUpdateSeconds)
-	prometheus.MustRegister(LastKeeperSeconds)
-	prometheus.MustRegister(LastReloadSeconds)
+	prometheus.MustRegister(clusterIdentifier)
+	prometheus.MustRegister(shutdownSeconds)
+	prometheus.MustRegister(outstandingConnections)
+	prometheus.MustRegister(storePollInterval)
+	prometheus.MustRegister(storeLastUpdateSeconds)
+	prometheus.MustRegister(lastKeeperSeconds)
+	prometheus.MustRegister(lastReloadSeconds)
 }
 
 func main() {
@@ -212,7 +210,7 @@ func main() {
 
 	go func() {
 		<-ctx.Done()
-		ShutdownSeconds.SetToCurrentTime()
+		shutdownSeconds.SetToCurrentTime()
 	}()
 
 	switch command {
@@ -315,8 +313,8 @@ func main() {
 		pgBouncer := mustPgBouncer(supervisePgBouncerOptions)
 		stopt := superviseStolonOptions
 
-		ClusterIdentifier.WithLabelValues(stopt.Prefix, stopt.ClusterName).Set(1)
-		StorePollInterval.Set(float64(*supervisePollInterval / time.Second))
+		clusterIdentifier.WithLabelValues(stopt.Prefix, stopt.ClusterName).Set(1)
+		storePollInterval.Set(float64(*supervisePollInterval / time.Second))
 
 		if !*superviseChildProcess {
 			logger.Log("msg", "not exec'ing PgBouncer- assuming external management")
@@ -372,7 +370,7 @@ func main() {
 					}
 				}
 
-				OutstandingConnections.Set(float64(currentConnections))
+				outstandingConnections.Set(float64(currentConnections))
 
 				if currentConnections > 0 {
 					logger.Log("event", "shutdown_pending", "total", currentConnections,
@@ -408,7 +406,7 @@ func main() {
 			// Before we filter revisions, update our last seen metric so we can detect if etcd
 			// has become unresponsive.
 			kvs = streams.Tap(kvs, func(kv *mvccpb.KeyValue) {
-				StoreLastUpdateSeconds.SetToCurrentTime()
+				storeLastUpdateSeconds.SetToCurrentTime()
 			})
 
 			// etcd provides events out-of-order, and potentially duplicated. We need to use the
@@ -455,8 +453,8 @@ func main() {
 
 							// Set our metric to signal we've received a new keeper. This allows us to
 							// compare the time between seeing our new keeper and updating PgBouncer.
-							LastKeeperSeconds.Reset()
-							LastKeeperSeconds.WithLabelValues(master.Spec.KeeperUID).SetToCurrentTime()
+							lastKeeperSeconds.Reset()
+							lastKeeperSeconds.WithLabelValues(master.Spec.KeeperUID).SetToCurrentTime()
 
 							logger.Log("event", "generate_configuration", "host", master)
 							if err := pgBouncer.GenerateConfig(masterAddress); err != nil {
@@ -475,8 +473,8 @@ func main() {
 							// We only set this metric when we've successfully reloaded PgBouncer with
 							// the new keeper value. Alerts should detect when this value is stale when
 							// compared to the last known update.
-							LastReloadSeconds.Reset()
-							LastReloadSeconds.WithLabelValues(master.Spec.KeeperUID).SetToCurrentTime()
+							lastReloadSeconds.Reset()
+							lastReloadSeconds.WithLabelValues(master.Spec.KeeperUID).SetToCurrentTime()
 
 							return nil
 						},
@@ -592,16 +590,4 @@ func setupSignalHandler() (context.Context, func()) {
 	}()
 
 	return ctx, cancel
-}
-
-// md5float generates a float64 from the md5 hash of the given string value. Useful for
-// exposing distinct values through Prometheus metrics.
-//
-// We use the first 48 bits of the md5 hash as the float64 specification has a 53 bit
-// mantissa.
-func md5float(content string) float64 {
-	sum := md5.Sum([]byte(content))
-	var bytes = make([]byte, 8)
-	copy(bytes, sum[0:6])
-	return float64(binary.LittleEndian.Uint64(bytes))
 }
