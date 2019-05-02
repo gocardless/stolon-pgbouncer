@@ -142,3 +142,38 @@ groups:
             pgbouncer=# show databases;
             ...
             ```
+
+  - name: stolon-keeper.rules
+    rules:
+      - alert: StolonKeeperStaleSync
+        expr: >
+          stolon_cluster_identifier * on(instance) group_right(cluster_name, store_prefix) (
+            time() - stolon_keeper_last_sync_success_seconds
+          ) > 60
+        labels:
+          severity: critical
+        annotations:
+          summary: ">1m since successful keeper sync on {{ $labels.instance }}"
+          description: |
+
+            stolon-keeper periodically attempts to sync the local Postgres to
+            the state it receives from the store. This alert will fire when it
+            has been more than 1m since the keeper successfully completed a
+            sync.
+
+            Check the keeper logs to identify the problem.
+
+      - alert: StolonKeeperRequiresRestart
+        expr: >
+          stolon_cluster_identifier * on(instance) group_right(cluster_name, store_prefix) (
+            stolon_keeper_needs_restart == 1
+          )
+        labels:
+          severity: critical
+        annotations:
+          summary: Postgres is pending restart
+          description: |
+
+            stolon-keeper manages Postgres configuration, along with Postgres
+            reload and restarts. This alert is firing when a keeper is reporting
+            a required restart that it's been unable to automatically apply.
