@@ -7,7 +7,7 @@ BASE_TAG=2019040201
 CIRCLECI_TAG=2019040303
 STOLON_DEVELOPMENT_TAG=2019043001
 
-.PHONY: all darwin linux test clean test-acceptance
+.PHONY: all darwin linux test clean test-acceptance docker-compose
 
 all: darwin linux
 darwin: $(PROG)
@@ -26,13 +26,15 @@ generate:
 test:
 	ginkgo -v -r
 
-test-acceptance: linux
-	docker-compose up --no-start
-	docker-compose start
+test-acceptance: docker-compose
 	go run cmd/stolon-pgbouncer-acceptance/main.go
 
 clean:
 	rm -rvf $(PROG) $(PROG:%=%.linux_amd64)
+
+docker-compose: bin/stolon-pgbouncer.linux_amd64
+	docker-compose up --no-start
+	docker-compose start
 
 docker-base: docker/base/Dockerfile
 	docker build -t gocardless/stolon-pgbouncer-base:$(BASE_TAG) docker/base

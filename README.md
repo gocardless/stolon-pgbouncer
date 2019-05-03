@@ -76,10 +76,7 @@ First install [Docker](https://docker.io/) and Golang >=1.12, then run:
 # Clone into your GOPATH
 $ git clone https://github.com/gocardless/stolon-pgbouncer
 $ cd stolon-pgbouncer
-$ make bin/stolon-pgbouncer.linux_amd64
-
-# Start playground (-d flag to run in the background)
-$ docker-compose up -d
+$ make docker-compose
 ...
 
 # List all docker-compose services
