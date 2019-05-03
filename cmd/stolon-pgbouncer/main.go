@@ -531,15 +531,7 @@ func main() {
 func renderHealthCheck(healthchecks map[string]pkgfailover.HealthCheckResponse) {
 	fmt.Printf("\n")
 	for client, hc := range healthchecks {
-		checkStr := strings.Builder{}
-		for _, check := range hc.Components {
-			fmt.Fprintf(&checkStr, "\tComponent: %s\tStatus: %s", check.Name, check.Status.String())
-			if check.Error != "" {
-				fmt.Fprintf(&checkStr, "\tError: %s", check.Error)
-			}
-			fmt.Fprint(&checkStr, "\n")
-		}
-		fmt.Printf("%s: %s\n%s\n", client, hc.Status.String(), checkStr.String())
+		fmt.Printf("%s: %s", client, pkgfailover.HealthCheckToString(hc))
 	}
 }
 

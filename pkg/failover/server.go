@@ -2,6 +2,8 @@ package failover
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
 	kitlog "github.com/go-kit/kit/log"
@@ -72,7 +74,6 @@ func (s *Server) NewAuthenticationInterceptor(token string) func(context.Context
 func (s *Server) HealthCheck(ctx context.Context, _ *Empty) (*HealthCheckResponse, error) {
 	resp := &HealthCheckResponse{Status: HealthCheckResponse_HEALTHY}
 
-	// PgBouncer Healthcheck
 	pgBouncerHealthCheck := &HealthCheckResponse_ComponentHealthCheck{
 		Name:   "PgBouncer",
 		Status: HealthCheckResponse_HEALTHY,
@@ -158,4 +159,17 @@ func mustTimestampProto(t time.Time) *tspb.Timestamp {
 
 func iso3339(t time.Time) string {
 	return t.Format("2006-01-02T15:04:05-0700")
+}
+
+// HealthCheckToString renders a healthcheck to a human-readable string
+func HealthCheckToString(healthcheck HealthCheckResponse) string {
+	checkStr := strings.Builder{}
+	for _, check := range healthcheck.Components {
+		fmt.Fprintf(&checkStr, "\tComponent: %s\tStatus: %s", check.Name, check.Status.String())
+		if check.Error != "" {
+			fmt.Fprintf(&checkStr, "\tError: %s", check.Error)
+		}
+		fmt.Fprint(&checkStr, "\n")
+	}
+	return fmt.Sprintf("%s\n%s\n", healthcheck.Status.String(), checkStr.String())
 }
