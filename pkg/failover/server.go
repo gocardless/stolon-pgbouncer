@@ -2,6 +2,8 @@ package failover
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
 	kitlog "github.com/go-kit/kit/log"
@@ -72,11 +74,23 @@ func (s *Server) NewAuthenticationInterceptor(token string) func(context.Context
 func (s *Server) HealthCheck(ctx context.Context, _ *Empty) (*HealthCheckResponse, error) {
 	resp := &HealthCheckResponse{Status: HealthCheckResponse_HEALTHY}
 
-	// TODO: Provide error in the health check response
-	// https://github.com/gocardless/stolon-pgbouncer/pull/11
-	if _, err := s.bouncer.ShowDatabases(ctx); err != nil {
-		resp.Status = HealthCheckResponse_UNHEALTHY
+	pgBouncerHealthCheck := &HealthCheckResponse_ComponentHealthCheck{
+		Name:   "PgBouncer",
+		Status: HealthCheckResponse_HEALTHY,
 	}
+
+	if _, err := s.bouncer.ShowDatabases(ctx); err != nil {
+		pgBouncerHealthCheck.Status = HealthCheckResponse_UNHEALTHY
+		pgBouncerHealthCheck.Error = err.Error()
+	}
+
+	resp.Components = []*HealthCheckResponse_ComponentHealthCheck{pgBouncerHealthCheck}
+
+	// We only have one component right now, so the overall status == the status of that
+	// component (PgBouncer)
+	// When we have multiple components, we may want
+	//   resp.Status = min(resp.Components.map(Status))
+	resp.Status = pgBouncerHealthCheck.Status
 
 	return resp, nil
 }
@@ -145,4 +159,17 @@ func mustTimestampProto(t time.Time) *tspb.Timestamp {
 
 func iso3339(t time.Time) string {
 	return t.Format("2006-01-02T15:04:05-0700")
+}
+
+// HealthCheckToString renders a healthcheck to a human-readable string
+func HealthCheckToString(healthcheck HealthCheckResponse) string {
+	checkStr := strings.Builder{}
+	for _, check := range healthcheck.Components {
+		fmt.Fprintf(&checkStr, "\tComponent: %s\tStatus: %s", check.Name, check.Status.String())
+		if check.Error != "" {
+			fmt.Fprintf(&checkStr, "\tError: %s", check.Error)
+		}
+		fmt.Fprint(&checkStr, "\n")
+	}
+	return fmt.Sprintf("%s\n%s\n", healthcheck.Status.String(), checkStr.String())
 }

@@ -40,7 +40,6 @@ services:
       - /stolon-pgbouncer/bin/stolon-pgbouncer.linux_amd64
       - supervise
       - --metrics-address=0.0.0.0
-      - --enable-child-process
       - --pgbouncer-config-template-file=/stolon-pgbouncer/docker/stolon-development/pgbouncer/pgbouncer.ini.template
     volumes:
       - .:/stolon-pgbouncer

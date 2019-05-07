@@ -53,7 +53,6 @@ var (
 	supervisePollInterval               = supervise.Flag("poll-interval", "Store poll interval").Default("1m").Duration()
 	supervisePgBouncerTimeout           = supervise.Flag("pgbouncer-timeout", "Timeout for PgBouncer operations").Default("5s").Duration()
 	supervisePgBouncerRetryTimeout      = supervise.Flag("pgbouncer-retry-timeout", "Retry failed PgBouncer operations at this interval").Default("5s").Duration()
-	superviseChildProcess               = supervise.Flag("enable-child-process", "Manage PgBouncer as a child process").Default("false").Bool()
 	childProcessTerminationGracePeriod  = supervise.Flag("termination-grace-period", "Pause before rejecting new PgBouncer connections (on shutdown)").Default("5s").Duration()
 	childProcessTerminationPollInterval = supervise.Flag("termination-poll-interval", "Poll PgBouncer for outstanding connections at this rate").Default("10s").Duration()
 
@@ -74,6 +73,12 @@ var (
 	failoverPauseExpiry        = failover.Flag("pause-expiry", "Time to wait before resuming PgBouncer after pause").Default("25s").Duration()
 	failoverResumeTimeout      = failover.Flag("resume-timeout", "Timeout for issuing PgBouncer resumes").Default("5s").Duration()
 	failoverStolonctlTimeout   = failover.Flag("stolonctl-timeout", "Timeout for executing stolonctl commands").Default("5s").Duration()
+
+	status              = app.Command("status", "Show information about the current status of the cluster")
+	statusStolonOptions = newStolonOptions(status)
+	statusToken         = status.Flag("token", "Authentication token for pauser API").Default("").Envar("STBOUNCER_FAILOVER_TOKEN").String()
+	statusPauserPort    = status.Flag("pauser-port", "Port on which the pauser APIs are listening").Default("8080").String()
+	statusTimeout       = status.Flag("timeout", "Timeout for fetching the status").Default("5s").Duration()
 )
 
 type stolonOptions struct {
@@ -214,6 +219,40 @@ func main() {
 	}()
 
 	switch command {
+	case status.FullCommand():
+		stopt := statusStolonOptions
+		client := mustStore(stopt)
+
+		clusterdataKey := fmt.Sprintf("%s/%s/clusterdata", stopt.Prefix, stopt.ClusterName)
+		clusterdata, err := stolon.GetClusterdata(ctx, client, clusterdataKey)
+		if err != nil {
+			kingpin.Fatalf("failed to get clusterdata: %s", err)
+		}
+
+		clients := map[string]pkgfailover.HealthCheckResponse{}
+		for _, db := range clusterdata.Dbs {
+			logger.Log("event", "client.dial", "client", db)
+			conn, err := grpc.Dial(fmt.Sprintf("%s:%s", db.Status.ListenAddress, *statusPauserPort), grpc.WithInsecure())
+			if err != nil {
+				kingpin.Fatalf("failed to dial client %s: %v", db, err)
+			}
+
+			// Annotate the request context with our token
+			logger.Log("event", "setting_pauser_token")
+			md := metadata.Pairs("authorization", *statusToken)
+			ctx = metadata.NewOutgoingContext(ctx, md)
+
+			client := pkgfailover.NewFailoverClient(conn)
+			clients[db.Spec.KeeperUID] = pkgfailover.HealthCheckResponse{}
+			resp, err := client.HealthCheck(ctx, &pkgfailover.Empty{})
+			if err != nil {
+				logger.Log("event", "healthcheck.failure", "msg", fmt.Sprintf("failed to health check client: %s", err.Error()))
+			} else {
+				clients[db.Spec.KeeperUID] = *resp
+			}
+		}
+		renderHealthCheck(clients)
+
 	case failover.FullCommand():
 		client := mustStore(failoverStolonOptions)
 		stopt := failoverStolonOptions
@@ -316,72 +355,68 @@ func main() {
 		clusterIdentifier.WithLabelValues(stopt.Prefix, stopt.ClusterName).Set(1)
 		storePollInterval.Set(float64(*supervisePollInterval / time.Second))
 
-		if !*superviseChildProcess {
-			logger.Log("msg", "not exec'ing PgBouncer- assuming external management")
-		} else {
-			var logger = kitlog.With(logger, "component", "pgbouncer.child")
+		var logger = kitlog.With(logger, "component", "pgbouncer.child")
 
-			if err := pgBouncer.GenerateConfig("0.0.0.0"); err != nil {
-				kingpin.Fatalf("failed to generate initial PgBouncer config: %v", err)
-			}
+		if err := pgBouncer.GenerateConfig("0.0.0.0"); err != nil {
+			kingpin.Fatalf("failed to generate initial PgBouncer config: %v", err)
+		}
 
-			cmdCtx, cmdCancel := context.WithCancel(context.Background())
+		cmdCtx, cmdCancel := context.WithCancel(context.Background())
 
-			cmd := exec.CommandContext(cmdCtx, "pgbouncer", supervisePgBouncerOptions.ConfigFile)
-			cmd.Stderr = os.Stderr
+		cmd := exec.CommandContext(cmdCtx, "pgbouncer", supervisePgBouncerOptions.ConfigFile)
+		cmd.Stderr = os.Stderr
 
-			// Termination handler for PgBouncer. Ensures we only quit PgBouncer once all
-			// connections have finished their work.
-			g.Add(cmd.Run, func(error) {
-				// Whatever happens, once we exit this block we want to terminate the PgBouncer
-				// process.
-				defer cmdCancel()
+		// Termination handler for PgBouncer. Ensures we only quit PgBouncer once all
+		// connections have finished their work.
+		g.Add(cmd.Run, func(error) {
+			// Whatever happens, once we exit this block we want to terminate the PgBouncer
+			// process.
+			defer cmdCancel()
 
-				logger.Log("event", "termination_grace_period", "msg", "waiting for grace period")
-				time.Sleep(*childProcessTerminationGracePeriod)
+			logger.Log("event", "termination_grace_period", "msg", "waiting for grace period")
+			time.Sleep(*childProcessTerminationGracePeriod)
 
-				logger.Log("event", "disable", "msg", "disabling new PgBouncer connections")
-				{
-					ctx, cancel := context.WithTimeout(context.Background(), *supervisePgBouncerTimeout)
-					defer cancel()
-
-					if err := pgBouncer.Disable(ctx); err != nil {
-						logger.Log("error", err, "msg", "failed to disable PgBouncer")
-						return
-					}
-				}
-
-			PollConnections:
-
+			logger.Log("event", "disable", "msg", "disabling new PgBouncer connections")
+			{
 				ctx, cancel := context.WithTimeout(context.Background(), *supervisePgBouncerTimeout)
 				defer cancel()
 
-				dbs, err := pgBouncer.ShowDatabases(ctx)
-				if err != nil {
-					logger.Log("event", "pgbouncer.error", "error", err, "msg", "could not contact PgBouncer")
-					goto PollConnections
+				if err := pgBouncer.Disable(ctx); err != nil {
+					logger.Log("error", err, "msg", "failed to disable PgBouncer")
+					return
 				}
+			}
 
-				var currentConnections = int64(0)
-				for _, db := range dbs {
-					currentConnections += db.CurrentConnections
-					if db.CurrentConnections > 0 {
-						logger.Log("event", "outstanding_connections", "database", db.Name, "count", db.CurrentConnections)
-					}
+		PollConnections:
+
+			ctx, cancel := context.WithTimeout(context.Background(), *supervisePgBouncerTimeout)
+			defer cancel()
+
+			dbs, err := pgBouncer.ShowDatabases(ctx)
+			if err != nil {
+				logger.Log("event", "pgbouncer.error", "error", err, "msg", "could not contact PgBouncer")
+				goto PollConnections
+			}
+
+			var currentConnections = int64(0)
+			for _, db := range dbs {
+				currentConnections += db.CurrentConnections
+				if db.CurrentConnections > 0 {
+					logger.Log("event", "outstanding_connections", "database", db.Name, "count", db.CurrentConnections)
 				}
+			}
 
-				outstandingConnections.Set(float64(currentConnections))
+			outstandingConnections.Set(float64(currentConnections))
 
-				if currentConnections > 0 {
-					logger.Log("event", "shutdown_pending", "total", currentConnections,
-						"msg", "waiting for outstanding connections to complete before terminating PgBouncer")
-					time.Sleep(*childProcessTerminationPollInterval)
-					goto PollConnections
-				}
+			if currentConnections > 0 {
+				logger.Log("event", "shutdown_pending", "total", currentConnections,
+					"msg", "waiting for outstanding connections to complete before terminating PgBouncer")
+				time.Sleep(*childProcessTerminationPollInterval)
+				goto PollConnections
+			}
 
-				logger.Log("event", "idle", "msg", "no more connections in PgBouncer, shutting down")
-			})
-		}
+			logger.Log("event", "idle", "msg", "no more connections in PgBouncer, shutting down")
+		})
 
 		{
 			var logger = kitlog.With(logger, "component", "pgbouncer.watch")
@@ -490,6 +525,14 @@ func main() {
 	}
 
 	logger.Log("event", "shutdown")
+}
+
+// Renders a HealthCheckResponse as human-readable text to stdout
+func renderHealthCheck(healthchecks map[string]pkgfailover.HealthCheckResponse) {
+	fmt.Printf("\n")
+	for client, hc := range healthchecks {
+		fmt.Printf("%s: %s", client, pkgfailover.HealthCheckToString(hc))
+	}
 }
 
 // Set by goreleaser
