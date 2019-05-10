@@ -135,7 +135,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "time() - ((stolon_keeper_last_sync_success_seconds > 0) and ignoring(cluster_name, store_prefix) stolon_cluster_identifier{cluster_name=\"$cluster\"})",
+          "expr": "time() - ((stolon_keeper_last_sync_success_seconds > 0) and ignoring(cluster_name) stolon_cluster_identifier{cluster_name=\"$cluster\"})",
           "format": "time_series",
           "intervalFactor": 1,
           "legendFormat": "{{ instance }}",
@@ -232,7 +232,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "time() - ((stolon_keeper_clusterdata_last_valid_update_seconds > 0) and ignoring(cluster_name, store_prefix) stolon_cluster_identifier{cluster_name=\"$cluster\"})",
+          "expr": "time() - ((stolon_keeper_clusterdata_last_valid_update_seconds > 0) and ignoring(cluster_name) stolon_cluster_identifier{cluster_name=\"$cluster\"})",
           "format": "time_series",
           "intervalFactor": 1,
           "legendFormat": "{{ instance }}",

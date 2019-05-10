@@ -5,7 +5,7 @@ BUILD_COMMAND=go build -ldflags "-X main.Version=$(VERSION)"
 
 BASE_TAG=2019040201
 CIRCLECI_TAG=2019040303
-STOLON_DEVELOPMENT_TAG=2019043001
+STOLON_DEVELOPMENT_TAG=2019051001
 
 .PHONY: all darwin linux test clean test-acceptance docker-compose
 

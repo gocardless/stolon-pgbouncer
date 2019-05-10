@@ -6,7 +6,7 @@ RUN set -x \
       && cd "${GOPATH}/src/github.com/sorintlab/stolon" \
       && git remote add gocardless https://github.com/gocardless/stolon \
       && git fetch gocardless \
-      && git checkout b937766b4a8884b8823547a2ef3a46040f00d245 \
+      && git checkout 71d109541f800fcacb2d8e3222715d84e569ccb5 \
       && go build -o stolon-keeper cmd/keeper/main.go
 
 
