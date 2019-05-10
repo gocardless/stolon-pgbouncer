@@ -11,7 +11,7 @@ groups:
         expr: >
           count by (cluster_name) (
             count by (cluster_name, keeper) (
-              stolon_cluster_identifier * ignoring(cluster_name, store_prefix, keeper) group_left(keeper) stolon_pgbouncer_last_reload_seconds
+              stolon_cluster_identifier * ignoring(cluster_name, keeper) group_left(keeper) stolon_pgbouncer_last_reload_seconds
             )
           ) > 1
         labels:
@@ -38,7 +38,7 @@ groups:
       - alert: StolonPgBouncerPendingShutdown
         expr: >
           max by (pod_name, namespace, version) (
-            stolon_cluster_identifier * ignoring(cluster_name, store_prefix) (
+            stolon_cluster_identifier * ignoring(cluster_name) (
               time() - (stolon_pgbouncer_shutdown_seconds > 0)
             ) > 180
           )
@@ -79,7 +79,7 @@ groups:
         # down our etcd listeners once we begin shutdown.
         expr: >
           max by (pod_name, namespace, version) (
-            stolon_cluster_identifier * ignoring(cluster_name, store_prefix) (
+            stolon_cluster_identifier * ignoring(cluster_name) (
               (time() - stolon_pgbouncer_store_last_update_seconds) > (2 * stolon_pgbouncer_store_poll_interval and stolon_pgbouncer_shutdown_seconds == 0)
             )
           )
@@ -111,7 +111,7 @@ groups:
         # down as we expect to stop listening to store updates on shutdown.
         expr: >
           max by (pod_name, namespace, version) (
-            stolon_cluster_identifier * ignoring(cluster_name, store_prefix) group_right(cluster_name, store_prefix) (
+            stolon_cluster_identifier * ignoring(cluster_name) group_right(cluster_name) (
               stolon_pgbouncer_last_keeper_seconds - ignoring(keeper) stolon_pgbouncer_last_reload_seconds > 5
             )
           )
@@ -147,7 +147,7 @@ groups:
     rules:
       - alert: StolonKeeperStaleSync
         expr: >
-          stolon_cluster_identifier * on(instance) group_right(cluster_name, store_prefix) (
+          stolon_cluster_identifier * on(instance) group_right(cluster_name) (
             time() - stolon_keeper_last_sync_success_seconds
           ) > 60
         labels:
@@ -165,7 +165,7 @@ groups:
 
       - alert: StolonKeeperRequiresRestart
         expr: >
-          stolon_cluster_identifier * on(instance) group_right(cluster_name, store_prefix) (
+          stolon_cluster_identifier * on(instance) group_right(cluster_name) (
             stolon_keeper_needs_restart == 1
           )
         labels:
