@@ -13,7 +13,7 @@
   "additionalWalSenders": 5,
   "additionalMasterReplicationSlots": [],
   "mergePgParameters": true,
-  "clusterRole": "master",
+  "role": "master",
   "automaticPgRestart": false,
   "usePgrewind": true,
   "pgParameters": {
