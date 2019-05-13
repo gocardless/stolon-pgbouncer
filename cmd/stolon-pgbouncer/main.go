@@ -278,21 +278,16 @@ func main() {
 			clients[db.Spec.KeeperUID] = pkgfailover.NewFailoverClient(conn)
 		}
 
-		logger.Log("event", "setting_pauser_token")
-		md := metadata.Pairs("authorization", *failoverToken)
-
-		// Annotate the request context with our token
-		ctx = metadata.NewOutgoingContext(ctx, md)
-
 		// Once our initial context is finished, wait some time before cancelling our defer
 		// context. This ensures in the event of an operator SIGQUIT that we attempt to run
 		// cleanup tasks before actually quitting.
-		deferCtx, cancel := context.WithCancel(metadata.NewOutgoingContext(context.Background(), md))
+		deferCtx, cancel := context.WithCancel(context.Background())
 		go func() { <-ctx.Done(); time.Sleep(*failoverCleanupTimeout); cancel() }()
 		defer cancel()
 
 		opt := pkgfailover.FailoverOptions{
 			ClusterdataKey:     clusterdataKey,
+			Token:              *failoverToken,
 			HealthCheckTimeout: *failoverHealthCheckTimeout,
 			LockTimeout:        *failoverLockTimeout,
 			PauseTimeout:       *failoverPauseTimeout,
