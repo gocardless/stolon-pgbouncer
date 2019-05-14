@@ -13,10 +13,11 @@ import (
 
 // StreamOptions should be passed to NewStream to construct a new streaming channel
 type StreamOptions struct {
-	Ctx          context.Context
-	Keys         []string
-	PollInterval time.Duration
-	GetTimeout   time.Duration
+	Ctx                context.Context
+	Keys               []string
+	PollInterval       time.Duration
+	WatchRetryInterval time.Duration
+	GetTimeout         time.Duration
 }
 
 // Thin interface around the etcd functions we require
@@ -42,8 +43,14 @@ func NewStream(logger kitlog.Logger, client etcdGetter, opt StreamOptions) (<-ch
 		defer cancel()
 		defer wg.Done()
 
-		logger.Log("event", "watch.start")
-		for resp := range client.Watch(opt.Ctx, "/", clientv3.WithPrefix()) {
+	Watch:
+
+		logger.Log("event", "watch_start")
+		for resp := range client.Watch(clientv3.WithRequireLeader(ctx), "/", clientv3.WithPrefix()) {
+			if resp.Err() != nil {
+				logger.Log("error", resp.Err(), "msg", "received error from etcd watcher")
+			}
+
 			for _, event := range resp.Events {
 				if includes(opt.Keys, string(event.Kv.Key)) {
 					out <- event.Kv
@@ -51,7 +58,12 @@ func NewStream(logger kitlog.Logger, client etcdGetter, opt StreamOptions) (<-ch
 			}
 		}
 
-		logger.Log("event", "watch.stop", "msg", "channel closed, stopping stream")
+		select {
+		case <-ctx.Done():
+			logger.Log("event", "watch_stop", "msg", "context expired, stopping stream")
+		case <-time.After(opt.WatchRetryInterval):
+			goto Watch
+		}
 	}()
 
 	// The etcd watch API retries indefinitely, but the abstraction hides errors. By
@@ -62,19 +74,19 @@ func NewStream(logger kitlog.Logger, client etcdGetter, opt StreamOptions) (<-ch
 		defer wg.Done()
 
 	Poll:
-		logger.Log("event", "poll.start")
+		logger.Log("event", "poll_start")
 		for _, key := range opt.Keys {
 			getCtx, getCtxCancel := context.WithTimeout(ctx, opt.GetTimeout)
 			resp, err := client.Get(getCtx, key)
 			getCtxCancel()
 
 			if err != nil {
-				logger.Log("event", "poll.error", "key", key)
+				logger.Log("error", err, "key", key, "msg", "failed to poll etcd")
 				continue
 			}
 
 			if len(resp.Kvs) == 0 {
-				logger.Log("event", "poll.missing_etcd_value", "key", key,
+				logger.Log("error", "poll_missing_etcd_value", "key", key,
 					"msg", "key has no value (is supervise running?)")
 				continue
 			}
@@ -84,7 +96,7 @@ func NewStream(logger kitlog.Logger, client etcdGetter, opt StreamOptions) (<-ch
 
 		select {
 		case <-ctx.Done():
-			logger.Log("event", "poll.stop", "msg", "context expired, stopping stream")
+			logger.Log("event", "poll_stop", "msg", "context expired, stopping stream")
 		case <-time.After(opt.PollInterval):
 			goto Poll
 		}

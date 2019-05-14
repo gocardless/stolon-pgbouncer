@@ -50,6 +50,7 @@ var (
 	superviseStolonOptions              = newStolonOptions(supervise)
 	supervisePgBouncerOptions           = newPgBouncerOptions(supervise)
 	supervisePollInterval               = supervise.Flag("poll-interval", "Store poll interval").Default("1m").Duration()
+	superviseWatchRetryInterval         = supervise.Flag("watch-retry-interval", "Interval to retry constructing an etcd watcher").Default("5s").Duration()
 	supervisePgBouncerTimeout           = supervise.Flag("pgbouncer-timeout", "Timeout for PgBouncer operations").Default("5s").Duration()
 	supervisePgBouncerRetryTimeout      = supervise.Flag("pgbouncer-retry-timeout", "Retry failed PgBouncer operations at this interval").Default("5s").Duration()
 	childProcessTerminationGracePeriod  = supervise.Flag("termination-grace-period", "Pause before rejecting new PgBouncer connections (on shutdown)").Default("5s").Duration()
@@ -400,9 +401,10 @@ func main() {
 			var logger = kitlog.With(logger, "component", "pgbouncer.watch")
 
 			streamOptions := etcd.StreamOptions{
-				Ctx:          ctx,
-				GetTimeout:   stopt.Timeout,
-				PollInterval: *supervisePollInterval,
+				Ctx:                ctx,
+				GetTimeout:         stopt.Timeout,
+				PollInterval:       *supervisePollInterval,
+				WatchRetryInterval: *superviseWatchRetryInterval,
 				Keys: []string{
 					fmt.Sprintf("%s/%s/clusterdata", stopt.Prefix, stopt.ClusterName),
 				},
