@@ -53,7 +53,7 @@ var (
 	supervisePollInterval               = supervise.Flag("poll-interval", "Store poll interval").Default("1m").Duration()
 	supervisePgBouncerTimeout           = supervise.Flag("pgbouncer-timeout", "Timeout for PgBouncer operations").Default("5s").Duration()
 	supervisePgBouncerRetryTimeout      = supervise.Flag("pgbouncer-retry-timeout", "Retry failed PgBouncer operations at this interval").Default("5s").Duration()
-	superviseHealthCheckTimeout         = supervise.Flag("health-check-timeout", "Timeout for health check").Default("2m").Duration()
+	superviseStoreUpdateMaxAge          = supervise.Flag("store-update-max-age", "If the last store update was older than this, the healthcheck endpoint will report failure").Default("2m").Duration()
 	childProcessTerminationGracePeriod  = supervise.Flag("termination-grace-period", "Pause before rejecting new PgBouncer connections (on shutdown)").Default("5s").Duration()
 	childProcessTerminationPollInterval = supervise.Flag("termination-poll-interval", "Poll PgBouncer for outstanding connections at this rate").Default("10s").Duration()
 
@@ -208,7 +208,7 @@ func main() {
 	go func() {
 		logger.Log("event", "metrics.listen", "address", *metricsAddress, "port", *metricsPort)
 		http.Handle("/metrics", promhttp.Handler())
-		http.HandleFunc("/health_check", healthCheckHandler(storeLastUpdateSeconds))
+		http.HandleFunc("/health_check", newHealthCheckHandler(storeLastUpdateSeconds))
 		http.ListenAndServe(fmt.Sprintf("%s:%v", *metricsAddress, *metricsPort), nil)
 	}()
 
@@ -516,18 +516,20 @@ func renderHealthCheck(healthchecks map[string]pkgfailover.HealthCheckResponse) 
 	}
 }
 
-func healthCheckHandler(storeLastUpdateSeconds prometheus.Gauge) func(w http.ResponseWriter, req *http.Request) {
+func newHealthCheckHandler(storeLastUpdateSeconds prometheus.Gauge) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, req *http.Request) {
-	    var metric dto.Metric
+		var metric dto.Metric
 		storeLastUpdateSeconds.Write(&metric)
 
 		timeNow := float64(time.Now().Unix())
 		lastUpdate := *metric.Gauge.Value
 
-		if timeNow - lastUpdate > superviseHealthCheckTimeout.Seconds() {
-			w.WriteHeader(http.StatusInternalServerError)
-		} else {
+		healthy := timeNow-lastUpdate < superviseStoreUpdateMaxAge.Seconds()
+
+		if healthy {
 			w.WriteHeader(http.StatusOK)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
 		}
 	}
 }
