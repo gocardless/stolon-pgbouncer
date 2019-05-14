@@ -18,6 +18,7 @@ groups:
           severity: critical
         annotations:
           summary: PgBouncers in this cluster are pointed at multiple masters
+          dashboard: &dashboardStolonPgBouncer viJqeQkWk
           description: |
 
             The {{ $labels.cluster_name }} cluster has PgBouncers that are pointed at more
@@ -46,6 +47,7 @@ groups:
           severity: warning
         annotations:
           summary: PgBouncer is pending shutdown on {{ $labels.pod_name }}
+          dashboard: *dashboardStolonPgBouncer
           description: |
 
             stolon-pgbouncer has been sent a SIGTERM and is attempting
@@ -80,17 +82,18 @@ groups:
         expr: >
           max by (pod_name, namespace, version) (
             stolon_cluster_identifier * ignoring(cluster_name) (
-              (time() - stolon_pgbouncer_store_last_update_seconds) > (2 * stolon_pgbouncer_store_poll_interval and stolon_pgbouncer_shutdown_seconds == 0)
+              (time() - stolon_pgbouncer_store_last_update_seconds) > (6 * stolon_pgbouncer_store_poll_interval and stolon_pgbouncer_shutdown_seconds == 0)
             )
           )
         labels:
           severity: critical
         annotations:
           summary: Stale clusterdata updates from etcd on {{ $labels.pod_name }}
+          dashboard: *dashboardStolonPgBouncer
           description: |
 
             stolon-pgbouncer watches and polls the etcd store every poll
-            interval seconds. This alert is firing if more than 2x the poll
+            interval seconds. This alert is firing if more than 6x the poll
             interval has elapsed since we last received a value from our store.
 
             This likely means our etcd connection has malfunctioned, or we're
@@ -119,6 +122,7 @@ groups:
           severity: critical
         annotations:
           summary: Failed to reload PgBouncer on {{ $labels.pod_name }}
+          dashboard: *dashboardStolonPgBouncer
           description: |
 
             stolon-pgbouncer tries reloading PgBouncer in response to keeper
@@ -149,16 +153,17 @@ groups:
         expr: >
           stolon_cluster_identifier * on(instance) group_right(cluster_name) (
             time() - stolon_keeper_last_sync_success_seconds
-          ) > 60
+          ) > 120
         labels:
           severity: critical
         annotations:
           summary: ">1m since successful keeper sync on {{ $labels.instance }}"
+          dashboard: &dashboardStolonKeeper 0LgcjLRZz
           description: |
 
             stolon-keeper periodically attempts to sync the local Postgres to
             the state it receives from the store. This alert will fire when it
-            has been more than 1m since the keeper successfully completed a
+            has been more than 2m since the keeper successfully completed a
             sync.
 
             Check the keeper logs to identify the problem.
@@ -172,6 +177,7 @@ groups:
           severity: critical
         annotations:
           summary: Postgres is pending restart
+          dashboard: *dashboardStolonKeeper
           description: |
 
             stolon-keeper manages Postgres configuration, along with Postgres
