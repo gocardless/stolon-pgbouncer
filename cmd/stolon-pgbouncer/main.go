@@ -34,6 +34,7 @@ import (
 	"github.com/oklog/run"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	dto "github.com/prometheus/client_model/go"
 )
 
 var logger kitlog.Logger
@@ -52,6 +53,7 @@ var (
 	supervisePollInterval               = supervise.Flag("poll-interval", "Store poll interval").Default("1m").Duration()
 	supervisePgBouncerTimeout           = supervise.Flag("pgbouncer-timeout", "Timeout for PgBouncer operations").Default("5s").Duration()
 	supervisePgBouncerRetryTimeout      = supervise.Flag("pgbouncer-retry-timeout", "Retry failed PgBouncer operations at this interval").Default("5s").Duration()
+	superviseHealthCheckTimeout         = supervise.Flag("health-check-timeout", "Timeout for health check").Default("2m").Duration()
 	childProcessTerminationGracePeriod  = supervise.Flag("termination-grace-period", "Pause before rejecting new PgBouncer connections (on shutdown)").Default("5s").Duration()
 	childProcessTerminationPollInterval = supervise.Flag("termination-poll-interval", "Poll PgBouncer for outstanding connections at this rate").Default("10s").Duration()
 
@@ -206,6 +208,7 @@ func main() {
 	go func() {
 		logger.Log("event", "metrics.listen", "address", *metricsAddress, "port", *metricsPort)
 		http.Handle("/metrics", promhttp.Handler())
+		http.HandleFunc("/health_check", healthCheckHandler(storeLastUpdateSeconds))
 		http.ListenAndServe(fmt.Sprintf("%s:%v", *metricsAddress, *metricsPort), nil)
 	}()
 
@@ -510,6 +513,22 @@ func renderHealthCheck(healthchecks map[string]pkgfailover.HealthCheckResponse) 
 	fmt.Printf("\n")
 	for client, hc := range healthchecks {
 		fmt.Printf("%s: %s", client, pkgfailover.HealthCheckToString(hc))
+	}
+}
+
+func healthCheckHandler(storeLastUpdateSeconds prometheus.Gauge) func(w http.ResponseWriter, req *http.Request) {
+	return func(w http.ResponseWriter, req *http.Request) {
+	    var metric dto.Metric
+		storeLastUpdateSeconds.Write(&metric)
+
+		timeNow := float64(time.Now().Unix())
+		lastUpdate := *metric.Gauge.Value
+
+		if timeNow - lastUpdate > superviseHealthCheckTimeout.Seconds() {
+			w.WriteHeader(http.StatusInternalServerError)
+		} else {
+			w.WriteHeader(http.StatusOK)
+		}
 	}
 }
 
