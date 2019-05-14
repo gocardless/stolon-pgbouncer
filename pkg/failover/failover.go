@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/grpc/metadata"
+
 	"github.com/gocardless/stolon-pgbouncer/pkg/etcd"
 	"github.com/gocardless/stolon-pgbouncer/pkg/stolon"
 	"github.com/gocardless/stolon-pgbouncer/pkg/streams"
@@ -32,6 +34,7 @@ type Failover struct {
 
 type FailoverOptions struct {
 	ClusterdataKey     string
+	Token              string
 	HealthCheckTimeout time.Duration
 	LockTimeout        time.Duration
 	PauseTimeout       time.Duration
@@ -43,6 +46,16 @@ type FailoverOptions struct {
 type locker interface {
 	Lock(context.Context) error
 	Unlock(context.Context) error
+}
+
+// NewClientCtx generates a new context that will authenticate against the pauser API
+func NewClientCtx(ctx context.Context, token string, timeout time.Duration) (context.Context, func()) {
+	if token != "" {
+		md := metadata.Pairs("authorization", token)
+		ctx = metadata.NewOutgoingContext(ctx, md)
+	}
+
+	return context.WithTimeout(ctx, timeout)
 }
 
 func NewFailover(logger kitlog.Logger, client *clientv3.Client, clients map[string]FailoverClient, stolonctl stolon.Stolonctl, opt FailoverOptions) *Failover {
@@ -91,7 +104,7 @@ func (f *Failover) CheckClusterHealthy(ctx context.Context) error {
 func (f *Failover) HealthCheckClients(ctx context.Context) error {
 	f.logger.Log("event", "clients_health_check", "msg", "health checking all clients")
 	for endpoint, client := range f.clients {
-		ctx, cancel := context.WithTimeout(ctx, f.opt.HealthCheckTimeout)
+		ctx, cancel := NewClientCtx(ctx, f.opt.Token, f.opt.HealthCheckTimeout)
 		defer cancel()
 
 		resp, err := client.HealthCheck(ctx, &Empty{})
@@ -133,7 +146,7 @@ func (f *Failover) Pause(ctx context.Context) error {
 
 	// Allow an additional second for network round-trip. We should have terminated this
 	// request far before this context is expired.
-	ctx, cancel := context.WithTimeout(ctx, f.opt.PauseExpiry+time.Second)
+	ctx, cancel := NewClientCtx(ctx, f.opt.Token, f.opt.PauseExpiry+time.Second)
 	defer cancel()
 
 	err := f.EachClient(logger, func(endpoint string, client FailoverClient) error {
@@ -158,7 +171,7 @@ func (f *Failover) Resume(ctx context.Context) error {
 	logger := kitlog.With(f.logger, "event", "pgbouncer_resume")
 	logger.Log("msg", "requesting all pgbouncers resume")
 
-	ctx, cancel := context.WithTimeout(ctx, f.opt.ResumeTimeout)
+	ctx, cancel := NewClientCtx(ctx, f.opt.Token, f.opt.ResumeTimeout)
 	defer cancel()
 
 	err := f.EachClient(logger, func(endpoint string, client FailoverClient) error {

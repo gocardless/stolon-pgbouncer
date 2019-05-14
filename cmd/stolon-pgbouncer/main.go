@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/metadata"
 
 	"github.com/gocardless/stolon-pgbouncer/pkg/etcd"
 	pkgfailover "github.com/gocardless/stolon-pgbouncer/pkg/failover"
@@ -221,78 +220,56 @@ func main() {
 	switch command {
 	case status.FullCommand():
 		stopt := statusStolonOptions
+
 		client := mustStore(stopt)
+		clusterdata, _ := mustClusterdata(ctx, client, stopt)
+		clients := mustFailoverClients(*clusterdata, *statusPauserPort)
 
-		clusterdataKey := fmt.Sprintf("%s/%s/clusterdata", stopt.Prefix, stopt.ClusterName)
-		clusterdata, err := stolon.GetClusterdata(ctx, client, clusterdataKey)
-		if err != nil {
-			kingpin.Fatalf("failed to get clusterdata: %s", err)
-		}
+		checks := map[string]pkgfailover.HealthCheckResponse{}
+		for keeperUID, client := range clients {
+			ctx, cancel := pkgfailover.NewClientCtx(ctx, *statusToken, 10*time.Second)
+			defer cancel()
 
-		clients := map[string]pkgfailover.HealthCheckResponse{}
-		for _, db := range clusterdata.Dbs {
-			logger.Log("event", "client.dial", "client", db)
-			conn, err := grpc.Dial(fmt.Sprintf("%s:%s", db.Status.ListenAddress, *statusPauserPort), grpc.WithInsecure())
-			if err != nil {
-				kingpin.Fatalf("failed to dial client %s: %v", db, err)
-			}
-
-			// Annotate the request context with our token
-			logger.Log("event", "setting_pauser_token")
-			md := metadata.Pairs("authorization", *statusToken)
-			ctx = metadata.NewOutgoingContext(ctx, md)
-
-			client := pkgfailover.NewFailoverClient(conn)
-			clients[db.Spec.KeeperUID] = pkgfailover.HealthCheckResponse{}
-			resp, err := client.HealthCheck(ctx, &pkgfailover.Empty{})
+			check, err := client.HealthCheck(ctx, &pkgfailover.Empty{})
 			if err != nil {
 				logger.Log("event", "healthcheck.failure", "msg", fmt.Sprintf("failed to health check client: %s", err.Error()))
-			} else {
-				clients[db.Spec.KeeperUID] = *resp
+				check = &pkgfailover.HealthCheckResponse{
+					Components: []*pkgfailover.HealthCheckResponse_ComponentHealthCheck{
+						&pkgfailover.HealthCheckResponse_ComponentHealthCheck{
+							Name:   "connect",
+							Status: pkgfailover.HealthCheckResponse_UNKNOWN,
+							Error:  err.Error(),
+						},
+					},
+				}
 			}
+
+			checks[keeperUID] = *check
 		}
-		renderHealthCheck(clients)
+
+		renderHealthCheck(checks)
 
 	case failover.FullCommand():
-		client := mustStore(failoverStolonOptions)
 		stopt := failoverStolonOptions
 
-		clusterdataKey := fmt.Sprintf("%s/%s/clusterdata", stopt.Prefix, stopt.ClusterName)
-		clusterdata, err := stolon.GetClusterdata(ctx, client, clusterdataKey)
-		if err != nil {
-			kingpin.Fatalf("failed to get clusterdata: %s", err)
-		}
+		client := mustStore(stopt)
+		clusterdata, key := mustClusterdata(ctx, client, stopt)
+		clients := mustFailoverClients(*clusterdata, *failoverPauserPort)
 
 		stolonctl := stolon.Stolonctl{
 			ClusterName: stopt.ClusterName, Backend: stopt.Backend, Prefix: stopt.Prefix, Endpoints: stopt.Endpoints,
 		}
 
-		clients := map[string]pkgfailover.FailoverClient{}
-		for _, db := range clusterdata.Dbs {
-			logger.Log("event", "client_dial", "client", db)
-			conn, err := grpc.Dial(fmt.Sprintf("%s:%s", db.Status.ListenAddress, *failoverPauserPort), grpc.WithInsecure())
-			if err != nil {
-				kingpin.Fatalf("failed to dial client %s: %v", db, err)
-			}
-
-			clients[db.Spec.KeeperUID] = pkgfailover.NewFailoverClient(conn)
-		}
-
-		logger.Log("event", "setting_pauser_token")
-		md := metadata.Pairs("authorization", *failoverToken)
-
-		// Annotate the request context with our token
-		ctx = metadata.NewOutgoingContext(ctx, md)
-
 		// Once our initial context is finished, wait some time before cancelling our defer
 		// context. This ensures in the event of an operator SIGQUIT that we attempt to run
 		// cleanup tasks before actually quitting.
-		deferCtx, cancel := context.WithCancel(metadata.NewOutgoingContext(context.Background(), md))
+		deferCtx, cancel := context.WithCancel(context.Background())
 		go func() { <-ctx.Done(); time.Sleep(*failoverCleanupTimeout); cancel() }()
 		defer cancel()
 
 		opt := pkgfailover.FailoverOptions{
-			ClusterdataKey:     clusterdataKey,
+			ClusterdataKey:     key,
+			Token:              *failoverToken,
 			HealthCheckTimeout: *failoverHealthCheckTimeout,
 			LockTimeout:        *failoverLockTimeout,
 			PauseTimeout:       *failoverPauseTimeout,
@@ -303,6 +280,7 @@ func main() {
 
 		failover := pkgfailover.NewFailover(logger, client, clients, stolonctl, opt)
 
+		var err error
 		if *failoverHealthCheckOnly {
 			err = failover.HealthCheckClients(ctx)
 		} else {
@@ -548,6 +526,35 @@ func versionStanza() string {
 		"stolon-pgbouncer Version: %v\nGit SHA: %v\nGo Version: %v\nGo OS/Arch: %v/%v\nBuilt at: %v",
 		Version, Commit, GoVersion, runtime.GOOS, runtime.GOARCH, Date,
 	)
+}
+
+// mustClusterdata leverages the provided stolonOptions and etcd store to fetch
+// clusterdata.
+func mustClusterdata(ctx context.Context, client *clientv3.Client, stopt *stolonOptions) (*stolon.Clusterdata, string) {
+	clusterdataKey := fmt.Sprintf("%s/%s/clusterdata", stopt.Prefix, stopt.ClusterName)
+	clusterdata, err := stolon.GetClusterdata(ctx, client, clusterdataKey)
+	if err != nil {
+		kingpin.Fatalf("failed to get clusterdata: %s", err)
+	}
+
+	return clusterdata, clusterdataKey
+}
+
+// mustFailoverClient dials all the keepers in the clusterdata returning a map of keeper
+// UID to failover clients.
+func mustFailoverClients(clusterdata stolon.Clusterdata, port string) map[string]pkgfailover.FailoverClient {
+	clients := map[string]pkgfailover.FailoverClient{}
+	for _, db := range clusterdata.Dbs {
+		logger.Log("event", "client_dial", "client", db)
+		conn, err := grpc.Dial(fmt.Sprintf("%s:%s", db.Status.ListenAddress, port), grpc.WithInsecure())
+		if err != nil {
+			kingpin.Fatalf("failed to dial client %s: %v", db, err)
+		}
+
+		clients[db.Spec.KeeperUID] = pkgfailover.NewFailoverClient(conn)
+	}
+
+	return clients
 }
 
 func mustPgBouncer(opt *pgBouncerOptions) *pgbouncer.PgBouncer {
