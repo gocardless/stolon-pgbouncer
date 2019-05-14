@@ -636,7 +636,7 @@ func setupSignalHandler() (context.Context, func()) {
 		<-sigc
 		cancel()
 		<-sigc
-		panic("received second signal, exiting immediately")
+		// panic("received second signal, exiting immediately")
 	}()
 
 	return ctx, cancel
