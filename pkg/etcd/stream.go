@@ -44,25 +44,27 @@ func NewStream(logger kitlog.Logger, client etcdGetter, opt StreamOptions) (<-ch
 		defer wg.Done()
 
 	Watch:
+		for {
+			logger.Log("event", "watch_start")
+			for resp := range client.Watch(clientv3.WithRequireLeader(ctx), "/", clientv3.WithPrefix()) {
+				if resp.Err() != nil {
+					logger.Log("error", resp.Err(), "msg", "received error from etcd watcher")
+				}
 
-		logger.Log("event", "watch_start")
-		for resp := range client.Watch(clientv3.WithRequireLeader(ctx), "/", clientv3.WithPrefix()) {
-			if resp.Err() != nil {
-				logger.Log("error", resp.Err(), "msg", "received error from etcd watcher")
-			}
-
-			for _, event := range resp.Events {
-				if includes(opt.Keys, string(event.Kv.Key)) {
-					out <- event.Kv
+				for _, event := range resp.Events {
+					if includes(opt.Keys, string(event.Kv.Key)) {
+						out <- event.Kv
+					}
 				}
 			}
-		}
 
-		select {
-		case <-ctx.Done():
-			logger.Log("event", "watch_stop", "msg", "context expired, stopping stream")
-		case <-time.After(opt.WatchRetryInterval):
-			goto Watch
+			select {
+			case <-ctx.Done():
+				logger.Log("event", "watch_stop", "msg", "context expired, stopping stream")
+				break Watch
+			case <-time.After(opt.WatchRetryInterval):
+				// watch again
+			}
 		}
 	}()
 
@@ -74,31 +76,34 @@ func NewStream(logger kitlog.Logger, client etcdGetter, opt StreamOptions) (<-ch
 		defer wg.Done()
 
 	Poll:
-		logger.Log("event", "poll_start")
-		for _, key := range opt.Keys {
-			getCtx, getCtxCancel := context.WithTimeout(ctx, opt.GetTimeout)
-			resp, err := client.Get(getCtx, key)
-			getCtxCancel()
+		for {
+			logger.Log("event", "poll_start")
+			for _, key := range opt.Keys {
+				getCtx, getCtxCancel := context.WithTimeout(ctx, opt.GetTimeout)
+				resp, err := client.Get(getCtx, key)
+				getCtxCancel()
 
-			if err != nil {
-				logger.Log("error", err, "key", key, "msg", "failed to poll etcd")
-				continue
+				if err != nil {
+					logger.Log("error", err, "key", key, "msg", "failed to poll etcd")
+					continue
+				}
+
+				if len(resp.Kvs) == 0 {
+					logger.Log("error", "poll_missing_etcd_value", "key", key,
+						"msg", "key has no value (is supervise running?)")
+					continue
+				}
+
+				out <- resp.Kvs[0]
 			}
 
-			if len(resp.Kvs) == 0 {
-				logger.Log("error", "poll_missing_etcd_value", "key", key,
-					"msg", "key has no value (is supervise running?)")
-				continue
+			select {
+			case <-ctx.Done():
+				logger.Log("event", "poll_stop", "msg", "context expired, stopping stream")
+				break Poll
+			case <-time.After(opt.PollInterval):
+				// poll again
 			}
-
-			out <- resp.Kvs[0]
-		}
-
-		select {
-		case <-ctx.Done():
-			logger.Log("event", "poll_stop", "msg", "context expired, stopping stream")
-		case <-time.After(opt.PollInterval):
-			goto Poll
 		}
 	}()
 
