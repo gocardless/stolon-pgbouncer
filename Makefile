@@ -32,7 +32,7 @@ test-acceptance: docker-compose
 clean:
 	rm -rvf $(PROG) $(PROG:%=%.linux_amd64)
 
-docker-compose: bin/stolon-pgbouncer.linux_amd64
+docker-compose: clean bin/stolon-pgbouncer.linux_amd64
 	docker-compose up --no-start
 	docker-compose start
 
