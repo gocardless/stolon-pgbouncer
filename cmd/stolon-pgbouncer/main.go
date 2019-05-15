@@ -195,7 +195,6 @@ func main() {
 	command := kingpin.MustParse(app.Parse(os.Args[1:]))
 
 	logger = kitlog.NewLogfmtLogger(kitlog.NewSyncWriter(os.Stderr))
-	logger = kitlog.With(logger, "ts", kitlog.DefaultTimestampUTC, "caller", kitlog.DefaultCaller)
 	stdlog.SetOutput(kitlog.NewStdlibAdapter(logger))
 
 	if *debug {
@@ -203,6 +202,10 @@ func main() {
 	} else {
 		logger = level.NewFilter(logger, level.AllowInfo())
 	}
+
+	// Apply default caller after levelling the logger, to prevent the called field being
+	// set to level.go:63 all the time.
+	logger = kitlog.With(logger, "ts", kitlog.DefaultTimestampUTC, "caller", kitlog.DefaultCaller)
 
 	go func() {
 		logger.Log("event", "metrics.listen", "address", *metricsAddress, "port", *metricsPort)
