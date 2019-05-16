@@ -124,7 +124,7 @@ func newPgBouncerOptions(cmd *kingpin.CmdClause) *pgBouncerOptions {
 	opt := &pgBouncerOptions{}
 
 	cmd.Flag("pgbouncer-user", "Admin user of PgBouncer").Default("pgbouncer").StringVar(&opt.User)
-	cmd.Flag("pgbouncer-password", "Password for admin user").Default("").StringVar(&opt.Password)
+	cmd.Flag("pgbouncer-password", "Password for admin user").Default("").Envar("PGBOUNCER_PASSWORD").StringVar(&opt.Password)
 	cmd.Flag("pgbouncer-database", "PgBouncer special database (inadvisable to change)").Default("pgbouncer").StringVar(&opt.Database)
 	cmd.Flag("pgbouncer-socket-dir", "Directory in which the unix socket resides").Default("/var/run/postgresql").StringVar(&opt.SocketDir)
 	cmd.Flag("pgbouncer-port", "Directory in which the unix socket resides").Default("6432").StringVar(&opt.Port)
