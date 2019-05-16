@@ -11,6 +11,7 @@ import (
 
 	"github.com/coreos/etcd/clientv3"
 	kitlog "github.com/go-kit/kit/log"
+	"github.com/gocardless/stolon-pgbouncer/pkg/pgbouncer"
 	"github.com/gocardless/stolon-pgbouncer/pkg/stolon"
 	"github.com/jackc/pgx"
 
@@ -159,6 +160,56 @@ func RunAcceptance(ctx context.Context, logger kitlog.Logger) {
 
 				It("Fails the health check", func() {
 					Expect(err).To(HaveOccurred(), "health check should fail due to unresponsive keeper")
+				})
+			})
+		})
+
+		Describe("Pauser", func() {
+			Context("When PgBouncer is paused and pauser reboots", func() {
+				var (
+					conn    *pgx.Conn
+					bouncer *pgbouncer.PgBouncer
+					keeper  = "keeper0"
+				)
+
+				BeforeEach(func() {
+					conn = pgConnect(logger, pgBouncerPorts["keeper0"])
+					bouncer = &pgbouncer.PgBouncer{
+						Executor: &pgbouncer.AuthorizedExecutor{
+							User:      "pgbouncer",
+							Database:  "pgbouncer",
+							SocketDir: "localhost",
+							Port:      pgBouncerPorts[keeper],
+						},
+					}
+
+					err := bouncer.Pause(ctx)
+					Expect(err).NotTo(HaveOccurred(), "failed to pause %s PgBouncer", keeper)
+				})
+
+				AfterEach(func() {
+					err := bouncer.Resume(ctx)
+					Expect(err).NotTo(HaveOccurred(), "failed to resume %s PgBouncer", keeper)
+				})
+
+				// The pauser will issue a PgBouncer resume whenever it boots as a precaution to
+				// catch any dangling pause commands it may have run as the previous process, like
+				// if the process was violently killed mid-migration.
+				//
+				// We can rely on the docker supervisord process bringing the pauser back up if we
+				// violently kill it, so it's sufficient to check that the reboot enables us to
+				// query the database, as a lack of resume would make our select now() timeout.
+				It("Resumes PgBouncer", func() {
+					err := execCommand(ctx, "docker-compose", "exec", keeper, "pkill", "-9", "--full", "pauser")
+					Expect(err).NotTo(HaveOccurred(), "killing %s pauser service", keeper)
+
+					queryCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+					defer cancel()
+
+					_, err = conn.ExecEx(queryCtx, `select now();`, nil)
+					Expect(err).NotTo(
+						HaveOccurred(), "failed to execute query via PgBouncer",
+					)
 				})
 			})
 		})

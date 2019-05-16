@@ -56,10 +56,11 @@ var (
 	childProcessTerminationGracePeriod  = supervise.Flag("termination-grace-period", "Pause before rejecting new PgBouncer connections (on shutdown)").Default("5s").Duration()
 	childProcessTerminationPollInterval = supervise.Flag("termination-poll-interval", "Poll PgBouncer for outstanding connections at this rate").Default("10s").Duration()
 
-	pauser                 = app.Command("pauser", "Serve the PgBouncer pause API")
-	pauserPgBouncerOptions = newPgBouncerOptions(pauser)
-	pauserToken            = pauser.Flag("token", "Authentication token for pauser API").Default("").Envar("STBOUNCER_FAILOVER_TOKEN").String()
-	pauserBindAddress      = pauser.Flag("bind-address", "Listen address for the pauser API").Default(":8080").String()
+	pauser                     = app.Command("pauser", "Serve the PgBouncer pause API")
+	pauserPgBouncerOptions     = newPgBouncerOptions(pauser)
+	pauserToken                = pauser.Flag("token", "Authentication token for pauser API").Default("").Envar("STBOUNCER_FAILOVER_TOKEN").String()
+	pauserBindAddress          = pauser.Flag("bind-address", "Listen address for the pauser API").Default(":8080").String()
+	pauserInitialResumeTimeout = pauser.Flag("initial-resume-timeout", "Timeout for initially resuming PgBouncer on start-up").Default("5s").Duration()
 
 	failover                   = app.Command("failover", "Run a zero-downtime failover of the Postgres primary")
 	failoverStolonOptions      = newStolonOptions(failover)
@@ -304,7 +305,25 @@ func main() {
 			kingpin.Fatalf("failed to bind to address: %v", err)
 		}
 
-		server := pkgfailover.NewServer(logger, mustPgBouncer(pauserPgBouncerOptions))
+		bouncer := mustPgBouncer(pauserPgBouncerOptions)
+
+		// The pauser provides a safe API around pausing PgBouncer, where safe means the pause
+		// will eventually be removed. In the situation where our process was violently
+		// terminated, we may have broken this promise by never issuing a resume. By resuming
+		// whenever we restart, we rely on our supervisor system (systemd, kubernetes, etc) to
+		// bring our process back and immediately resume traffic, re-enabling queries.
+		//
+		// We may be mid-migration, but resuming too early is better than never resuming at
+		// all, which could lead to extended downtime.
+		logger.Log("event", "resuming_pgbouncer",
+			"msg", "resuming PgBouncer on start, in case we were terminated mid failover before")
+		resumeCtx, cancel := context.WithTimeout(ctx, *pauserInitialResumeTimeout)
+		defer cancel()
+		if err := bouncer.Resume(resumeCtx); err != nil {
+			logger.Log("error", err, "msg", "failed to resume PgBouncer when starting up")
+		}
+
+		server := pkgfailover.NewServer(logger, bouncer)
 		grpcServer := grpc.NewServer(
 			grpc.UnaryInterceptor(
 				grpc_middleware.ChainUnaryServer(
