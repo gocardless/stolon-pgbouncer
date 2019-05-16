@@ -15,8 +15,8 @@
   "editable": true,
   "gnetId": null,
   "graphTooltip": 1,
-  "id": 62,
-  "iteration": 1556008997240,
+  "id": 2,
+  "iteration": 1558016782331,
   "links": [],
   "panels": [
     {
@@ -35,7 +35,7 @@
       "scroll": true,
       "showHeader": true,
       "sort": {
-        "col": 3,
+        "col": 2,
         "desc": true
       },
       "styles": [
@@ -81,7 +81,7 @@
       ],
       "targets": [
         {
-          "expr": "max by (pod_name, cluster_name, keeper) (\n  time() - stolon_pgbouncer_store_last_update_seconds * on(pod_name) group_left(cluster_name, keeper) (\n    stolon_cluster_identifier{cluster_name=\"$cluster\"} != ignoring(cluster_name, keeper) group_left(keeper) stolon_pgbouncer_last_reload_seconds\n  )\n)",
+          "expr": "max by (instance, cluster_name, keeper) (\n  time() - stolon_pgbouncer_store_last_update_seconds * on(instance) group_left(cluster_name, keeper) (\n    stolon_cluster_identifier{cluster_name=\"$cluster\"} != ignoring(cluster_name, keeper) group_left(keeper) stolon_pgbouncer_last_reload_seconds\n  )\n)",
           "format": "table",
           "instant": true,
           "intervalFactor": 1,
@@ -130,6 +130,7 @@
       "points": false,
       "renderer": "flot",
       "seriesOverrides": [],
+      "spaceLength": 10,
       "stack": false,
       "steppedLine": false,
       "targets": [
@@ -190,13 +191,104 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "$datasource",
-      "description": "Tracks the time passed since the last PgBouncer reload. We expect stolon-pgbouncer to periodically reload PgBouncer, so this has exceeded the store poll interval then we know PgBouncer reloading is failing.",
+      "description": "Number of client connections that are active via the PgBouncers, split by pod template hash.\n\nIf this is running in kubernetes and pod_template_hash specifies the replicaset version, you'll get a panel per active deployment of stolon-pgbouncer. This can help identify straggling deployments as they terminate.",
       "fill": 1,
       "gridPos": {
         "h": 8,
         "w": 24,
         "x": 0,
         "y": 13
+      },
+      "id": 18,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": true,
+      "linewidth": 1,
+      "links": [],
+      "nullPointMode": "null",
+      "paceLength": 10,
+      "percentage": false,
+      "pointradius": 2,
+      "points": false,
+      "renderer": "flot",
+      "repeat": "releases",
+      "repeatDirection": "v",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": false,
+      "steppedLine": false,
+      "targets": [
+        {
+          "expr": "sum by (instance) (pgbouncer_pools_client_active_connections{pod_template_hash=\"$releases\"} and on (instance) (stolon_cluster_identifier{cluster_name=\"$cluster\"} and on (instance) stolon_pgbouncer_shutdown_seconds))",
+          "format": "time_series",
+          "intervalFactor": 1,
+          "legendFormat": "{{ instance }}",
+          "refId": "A"
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeRegions": [],
+      "timeShift": null,
+      "title": "PgBouncer active clients ($releases)",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "decimals": 0,
+          "format": "none",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": "0",
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {},
+      "bars": false,
+      "cacheTimeout": null,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": "$datasource",
+      "description": "Tracks the time passed since the last PgBouncer reload. We expect stolon-pgbouncer to periodically reload PgBouncer, so this has exceeded the store poll interval then we know PgBouncer reloading is failing.",
+      "fill": 1,
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 21
       },
       "id": 12,
       "legend": {
@@ -218,6 +310,7 @@
       "points": false,
       "renderer": "flot",
       "seriesOverrides": [],
+      "spaceLength": 10,
       "stack": false,
       "steppedLine": false,
       "targets": [
@@ -225,7 +318,7 @@
           "expr": "time() - ((stolon_pgbouncer_store_last_update_seconds > 0) and ignoring(cluster_name, keeper) stolon_cluster_identifier{cluster_name=\"$cluster\"})",
           "format": "time_series",
           "intervalFactor": 1,
-          "legendFormat": "{{ pod_name }}",
+          "legendFormat": "{{ instance }}",
           "refId": "A"
         }
       ],
@@ -292,7 +385,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 21
+        "y": 29
       },
       "id": 16,
       "legend": {
@@ -314,6 +407,7 @@
       "points": false,
       "renderer": "flot",
       "seriesOverrides": [],
+      "spaceLength": 10,
       "stack": false,
       "steppedLine": false,
       "targets": [
@@ -321,7 +415,7 @@
           "expr": "time() - ((stolon_pgbouncer_last_reload_seconds > 0) and ignoring(cluster_name, keeper) stolon_cluster_identifier{cluster_name=\"$cluster\"})",
           "format": "time_series",
           "intervalFactor": 1,
-          "legendFormat": "{{ pod_name }}",
+          "legendFormat": "{{ instance }}",
           "refId": "A"
         }
       ],
@@ -388,7 +482,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 29
+        "y": 37
       },
       "id": 11,
       "legend": {
@@ -410,6 +504,7 @@
       "points": false,
       "renderer": "flot",
       "seriesOverrides": [],
+      "spaceLength": 10,
       "stack": false,
       "steppedLine": false,
       "targets": [
@@ -417,7 +512,7 @@
           "expr": "time() - ((stolon_pgbouncer_shutdown_seconds > 0) and ignoring(cluster_name) stolon_cluster_identifier{cluster_name=\"$cluster\"})",
           "format": "time_series",
           "intervalFactor": 1,
-          "legendFormat": "{{ pod_name }}",
+          "legendFormat": "{{ instance }}",
           "refId": "A"
         }
       ],
@@ -481,7 +576,7 @@
     }
   ],
   "refresh": "15s",
-  "schemaVersion": 18,
+  "schemaVersion": 16,
   "style": "dark",
   "tags": [
     "postgres",
@@ -491,11 +586,13 @@
     "list": [
       {
         "current": {
-          "text": "mon-prometheus-0",
-          "value": "mon-prometheus-0"
+          "text": "Prometheus",
+          "value": "Prometheus"
         },
         "hide": 0,
+        "includeAll": false,
         "label": null,
+        "multi": false,
         "name": "datasource",
         "options": [],
         "query": "prometheus",
@@ -507,8 +604,8 @@
       {
         "allValue": null,
         "current": {
-          "text": "lab-production/main",
-          "value": "lab-production/main"
+          "text": "main",
+          "value": "main"
         },
         "datasource": "$datasource",
         "definition": "label_values(stolon_cluster_identifier, cluster_name)",
@@ -523,6 +620,31 @@
         "regex": "",
         "skipUrlSync": false,
         "sort": 0,
+        "tagValuesQuery": "",
+        "tags": [],
+        "tagsQuery": "",
+        "type": "query",
+        "useTags": false
+      },
+      {
+        "allValue": null,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": "$datasource",
+        "definition": "query_result(count by (pod_template_hash) (min_over_time(stolon_cluster_identifier{cluster_name=\"$cluster\"}[$__range]) and on (instance) min_over_time(stolon_pgbouncer_shutdown_seconds[$__range])))",
+        "hide": 0,
+        "includeAll": true,
+        "label": null,
+        "multi": false,
+        "name": "releases",
+        "options": [],
+        "query": "query_result(count by (pod_template_hash) (min_over_time(stolon_cluster_identifier{cluster_name=\"$cluster\"}[$__range]) and on (instance) min_over_time(stolon_pgbouncer_shutdown_seconds[$__range])))",
+        "refresh": 2,
+        "regex": "/pod_template_hash=\"([^\"]+)\"/",
+        "skipUrlSync": false,
+        "sort": 1,
         "tagValuesQuery": "",
         "tags": [],
         "tagsQuery": "",
@@ -565,7 +687,7 @@
     ]
   },
   "time": {
-    "from": "now-30m",
+    "from": "now-6h",
     "to": "now"
   },
   "timepicker": {
@@ -589,5 +711,5 @@
   "timezone": "",
   "title": "stolon-pgbouncer",
   "uid": "0LgcjLRZz",
-  "version": 25
+  "version": 5
 }

@@ -9,9 +9,27 @@ scrape_configs:
   - job_name: "stolon-pgbouncer"
     static_configs:
       - targets: ["pgbouncer:9446"]
+    relabel_configs: &relabel
+      - source_labels: [__address__]
+        regex: .+:(\d+)
+        target_label: port
+        replacement: ${1}
+      - source_labels: [__address__]
+        regex: (.+):\d+
+        target_label: instance
+        replacement: ${1}
   - job_name: "stolon-keeper"
     static_configs:
       - targets:
           - "keeper0:9459"
           - "keeper1:9459"
           - "keeper2:9459"
+    relabel_configs: *relabel
+  - job_name: "pgbouncer"
+    static_configs:
+      - targets:
+          - "pgbouncer:9127"
+          - "keeper0:9127"
+          - "keeper1:9127"
+          - "keeper2:9127"
+    relabel_configs: *relabel

@@ -9,6 +9,15 @@ RUN set -x \
       && git checkout 71d109541f800fcacb2d8e3222715d84e569ccb5 \
       && go build -o stolon-keeper cmd/keeper/main.go
 
+# GoCardless runs this fork for PgBouncer metrics. We'll likely change this in
+# future but include it for now so the dashboards in this repo can match what we
+# have deployed internally.
+FROM golang:1.12 AS pgbouncer-exporter-fork
+RUN set -x \
+      && go get -d -v github.com/gocardless/pgbouncer_exporter \
+      && cd "${GOPATH}/src/github.com/gocardless/pgbouncer_exporter" \
+      && git checkout a4ec94990b18f76dfd872b2a9214e827c52220a5 \
+      && make
 
 # In addition to our base install of pgbouncer and postgresql-client, configure
 # all the dependencies we'll need across our docker-compose setup along with
@@ -21,8 +30,8 @@ RUN set -x \
       && tar xfvz /tmp/stolon.tar.gz -C /usr/local/bin --wildcards '*/bin/*' --strip-components=2 \
       && rm -v /tmp/stolon.tar.gz
 
-# Load the GoCardless keeper fork
 COPY --from=stolon-fork /go/src/github.com/sorintlab/stolon/stolon-keeper /usr/local/bin/stolon-keeper
+COPY --from=pgbouncer-exporter-fork /go/src/github.com/gocardless/pgbouncer_exporter/pgbouncer_exporter /usr/local/bin/pgbouncer_exporter
 
 ENV ETCDCTL_API=3 \
     CLUSTER_NAME=main \
@@ -40,7 +49,8 @@ RUN mkdir /data && chown -R postgres:postgres /data
 # 6432 => PgBouncer
 # 7432 => stolon-proxy
 # 8080 => stolon-pgbouncer (pauser)
+# 9127 => pgbouncer_exporter (metrics)
 # 9459 => stolon-keeper (metrics)
 # 9446 => stolon-pgbouncer (metrics)
-EXPOSE 5432 6432 7432 8080 9459 9446
-ENTRYPOINT ["supervisord", "-n", "-c", "/stolon-pgbouncer/docker/stolon-development/supervisord.conf"]
+EXPOSE 5432 6432 7432 8080 9127 9459 9446
+ENTRYPOINT ["supervisord", "-n", "-c"]

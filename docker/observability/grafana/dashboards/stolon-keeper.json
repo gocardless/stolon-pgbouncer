@@ -15,8 +15,8 @@
   "editable": true,
   "gnetId": null,
   "graphTooltip": 1,
-  "id": 2,
-  "iteration": 1556638340861,
+  "id": 1,
+  "iteration": 1558014956765,
   "links": [],
   "panels": [
     {
@@ -35,8 +35,8 @@
       "scroll": true,
       "showHeader": true,
       "sort": {
-        "col": 3,
-        "desc": true
+        "col": 1,
+        "desc": false
       },
       "styles": [
         {
@@ -102,13 +102,102 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "$datasource",
-      "description": "Tracks the time passed since the last PgBouncer reload. We expect stolon-pgbouncer to periodically reload PgBouncer, so this has exceeded the store poll interval then we know PgBouncer reloading is failing.",
+      "description": "Number of client connections that are active via the PgBouncers.",
       "fill": 1,
       "gridPos": {
         "h": 8,
         "w": 24,
         "x": 0,
         "y": 6
+      },
+      "id": 18,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": true,
+      "linewidth": 1,
+      "links": [],
+      "nullPointMode": "null",
+      "paceLength": 10,
+      "percentage": false,
+      "pointradius": 2,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": false,
+      "steppedLine": false,
+      "targets": [
+        {
+          "expr": "sum by (instance) (pgbouncer_pools_client_active_connections and on (instance) (stolon_cluster_identifier{cluster_name=\"$cluster\"} and on (instance) stolon_keeper_shutdown_seconds))",
+          "format": "time_series",
+          "intervalFactor": 1,
+          "legendFormat": "{{ instance }}",
+          "refId": "A"
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeRegions": [],
+      "timeShift": null,
+      "title": "PgBouncer active connections",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "decimals": 0,
+          "format": "none",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": "0",
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {},
+      "bars": false,
+      "cacheTimeout": null,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": "$datasource",
+      "description": "Tracks the time passed since the last PgBouncer reload. We expect stolon-pgbouncer to periodically reload PgBouncer, so this has exceeded the store poll interval then we know PgBouncer reloading is failing.",
+      "fill": 1,
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 14
       },
       "id": 12,
       "legend": {
@@ -205,7 +294,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 14
+        "y": 22
       },
       "id": 16,
       "legend": {
@@ -399,5 +488,5 @@
   "timezone": "",
   "title": "stolon-keeper",
   "uid": "viJqeQkWk",
-  "version": 2
+  "version": 3
 }
