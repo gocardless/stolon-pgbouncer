@@ -7,7 +7,7 @@ RUN set -x \
       && git remote add gocardless https://github.com/gocardless/stolon \
       && git fetch gocardless \
       && git checkout 71d109541f800fcacb2d8e3222715d84e569ccb5 \
-      && go build -o stolon-keeper cmd/keeper/main.go
+      && ./build
 
 # GoCardless runs this fork for PgBouncer metrics. We'll likely change this in
 # future but include it for now so the dashboards in this repo can match what we
@@ -30,7 +30,13 @@ RUN set -x \
       && tar xfvz /tmp/stolon.tar.gz -C /usr/local/bin --wildcards '*/bin/*' --strip-components=2 \
       && rm -v /tmp/stolon.tar.gz
 
-COPY --from=stolon-fork /go/src/github.com/sorintlab/stolon/stolon-keeper /usr/local/bin/stolon-keeper
+COPY --from=stolon-fork \
+  /go/src/github.com/sorintlab/stolon/bin/stolon-keeper \
+  /go/src/github.com/sorintlab/stolon/bin/stolon-proxy \
+  /go/src/github.com/sorintlab/stolon/bin/stolon-sentinel \
+  /go/src/github.com/sorintlab/stolon/bin/stolonctl \
+  /usr/local/bin/
+
 COPY --from=pgbouncer-exporter-fork /go/src/github.com/gocardless/pgbouncer_exporter/pgbouncer_exporter /usr/local/bin/pgbouncer_exporter
 
 ENV ETCDCTL_API=3 \
