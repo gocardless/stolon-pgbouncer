@@ -38,7 +38,7 @@ groups:
 
       - alert: StolonPgBouncerPendingShutdown
         expr: >
-          max by (pod_name, namespace, version) (
+          max by (instance, namespace, version) (
             stolon_cluster_identifier * ignoring(cluster_name) (
               time() - (stolon_pgbouncer_shutdown_seconds > 0)
             ) > 180
@@ -46,7 +46,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: PgBouncer is pending shutdown on {{ $labels.pod_name }}
+          summary: PgBouncer is pending shutdown on {{ $labels.instance }}
           dashboard: *dashboardStolonPgBouncer
           description: |
 
@@ -65,9 +65,9 @@ groups:
             querying the PgBouncer admin console.
 
             ```
-            $ kubectl logs -n {{ $labels.namespace }} {{ $labels.pod_name }} | grep outstanding_connections | tail -n 10
+            $ kubectl logs -n {{ $labels.namespace }} {{ $labels.instance }} | grep outstanding_connections | tail -n 10
             component=pgbouncer.child event=outstanding_connections database=postgres count=6
-            $ kubectl -n {{ $labels.namespace }} exec -it {{ $labels.pod_name }} bash
+            $ kubectl -n {{ $labels.namespace }} exec -it {{ $labels.instance }} bash
             postgres:/$ psql -p 6432 -U pgbouncer pgbouncer -h /tmp
             psql (11.2 (Ubuntu 11.2-1.pgdg18.04+1), server 1.9.0/bouncer)
             Type "help" for help.
@@ -80,7 +80,7 @@ groups:
         # Ensure we don't alert when shutdown_seconds > 0, as we'll have torn
         # down our etcd listeners once we begin shutdown.
         expr: >
-          max by (pod_name, namespace, version) (
+          max by (instance, namespace, version) (
             stolon_cluster_identifier * ignoring(cluster_name) (
               (time() - stolon_pgbouncer_store_last_update_seconds) > (6 * stolon_pgbouncer_store_poll_interval and stolon_pgbouncer_shutdown_seconds == 0)
             )
@@ -88,7 +88,7 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: Stale clusterdata updates from etcd on {{ $labels.pod_name }}
+          summary: Stale clusterdata updates from etcd on {{ $labels.instance }}
           dashboard: *dashboardStolonPgBouncer
           description: |
 
@@ -102,7 +102,7 @@ groups:
             wrong.
 
             ```
-            $ kubectl logs -f -n {{ $labels.namespace }} {{ $labels.pod_name }}
+            $ kubectl logs -f -n {{ $labels.namespace }} {{ $labels.instance }}
             ```
 
       - alert: StolonPgBouncerStaleReload
@@ -113,7 +113,7 @@ groups:
         # As with StolonPgBouncerStaleStore, don't alert when we're shutting
         # down as we expect to stop listening to store updates on shutdown.
         expr: >
-          max by (pod_name, namespace, version) (
+          max by (instance, namespace, version) (
             stolon_cluster_identifier * ignoring(cluster_name) group_right(cluster_name) (
               stolon_pgbouncer_last_keeper_seconds - ignoring(keeper) stolon_pgbouncer_last_reload_seconds > 5
             )
@@ -121,7 +121,7 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: Failed to reload PgBouncer on {{ $labels.pod_name }}
+          summary: Failed to reload PgBouncer on {{ $labels.instance }}
           dashboard: *dashboardStolonPgBouncer
           description: |
 
@@ -136,7 +136,7 @@ groups:
             state of the PgBouncer process.
 
             ```
-            $ kubectl -n {{ $labels.namespace }} exec -it {{ $labels.pod_name }} bash
+            $ kubectl -n {{ $labels.namespace }} exec -it {{ $labels.instance }} bash
             postgres:/$ ps auxf
             ... # expect to see PgBouncer and stolon-pgbouncer
             postgres:/$ psql -p 6432 -U pgbouncer pgbouncer -h /tmp
