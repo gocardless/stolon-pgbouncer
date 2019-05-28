@@ -139,9 +139,9 @@ var (
 	clusterIdentifier = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "stolon_cluster_identifier",
-			Help: "Set to 1, is labelled with the cluster_name",
+			Help: "Set to 1, is labelled with the cluster_name and component",
 		},
-		[]string{"cluster_name"},
+		[]string{"cluster_name", "component"},
 	)
 	shutdownSeconds = prometheus.NewGauge(
 		prometheus.GaugeOpts{
@@ -354,7 +354,7 @@ func main() {
 		pgBouncer := mustPgBouncer(supervisePgBouncerOptions)
 		stopt := superviseStolonOptions
 
-		clusterIdentifier.WithLabelValues(stopt.ClusterName).Set(1)
+		clusterIdentifier.WithLabelValues(stopt.ClusterName, "pgbouncer").Set(1)
 		storePollInterval.Set(float64(*supervisePollInterval / time.Second))
 
 		// Use this channel to signal when we first receive a keeper host. We can then wait
