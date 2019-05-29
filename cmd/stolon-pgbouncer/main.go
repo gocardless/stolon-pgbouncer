@@ -356,68 +356,70 @@ func main() {
 		clusterIdentifier.WithLabelValues(stopt.ClusterName).Set(1)
 		storePollInterval.Set(float64(*supervisePollInterval / time.Second))
 
-		var logger = kitlog.With(logger, "component", "pgbouncer.child")
+		{
+			var logger = kitlog.With(logger, "component", "pgbouncer.child")
 
-		if err := pgBouncer.GenerateConfig("0.0.0.0"); err != nil {
-			kingpin.Fatalf("failed to generate initial PgBouncer config: %v", err)
-		}
+			if err := pgBouncer.GenerateConfig("0.0.0.0"); err != nil {
+				kingpin.Fatalf("failed to generate initial PgBouncer config: %v", err)
+			}
 
-		cmdCtx, cmdCancel := context.WithCancel(context.Background())
+			cmdCtx, cmdCancel := context.WithCancel(context.Background())
 
-		cmd := exec.CommandContext(cmdCtx, "pgbouncer", supervisePgBouncerOptions.ConfigFile)
-		cmd.Stderr = os.Stderr
+			cmd := exec.CommandContext(cmdCtx, "pgbouncer", supervisePgBouncerOptions.ConfigFile)
+			cmd.Stderr = os.Stderr
 
-		// Termination handler for PgBouncer. Ensures we only quit PgBouncer once all
-		// connections have finished their work.
-		g.Add(cmd.Run, func(error) {
-			// Whatever happens, once we exit this block we want to terminate the PgBouncer
-			// process.
-			defer cmdCancel()
+			// Termination handler for PgBouncer. Ensures we only quit PgBouncer once all
+			// connections have finished their work.
+			g.Add(cmd.Run, func(error) {
+				// Whatever happens, once we exit this block we want to terminate the PgBouncer
+				// process.
+				defer cmdCancel()
 
-			logger.Log("event", "termination_grace_period", "msg", "waiting for grace period")
-			time.Sleep(*childProcessTerminationGracePeriod)
+				logger.Log("event", "termination_grace_period", "msg", "waiting for grace period")
+				time.Sleep(*childProcessTerminationGracePeriod)
 
-			logger.Log("event", "disable", "msg", "disabling new PgBouncer connections")
-			{
+				logger.Log("event", "disable", "msg", "disabling new PgBouncer connections")
+				{
+					ctx, cancel := context.WithTimeout(context.Background(), *supervisePgBouncerTimeout)
+					defer cancel()
+
+					if err := pgBouncer.Disable(ctx); err != nil {
+						logger.Log("error", err, "msg", "failed to disable PgBouncer")
+						return
+					}
+				}
+
+			PollConnections:
+
 				ctx, cancel := context.WithTimeout(context.Background(), *supervisePgBouncerTimeout)
 				defer cancel()
 
-				if err := pgBouncer.Disable(ctx); err != nil {
-					logger.Log("error", err, "msg", "failed to disable PgBouncer")
-					return
+				dbs, err := pgBouncer.ShowDatabases(ctx)
+				if err != nil {
+					logger.Log("event", "pgbouncer.error", "error", err, "msg", "could not contact PgBouncer")
+					goto PollConnections
 				}
-			}
 
-		PollConnections:
-
-			ctx, cancel := context.WithTimeout(context.Background(), *supervisePgBouncerTimeout)
-			defer cancel()
-
-			dbs, err := pgBouncer.ShowDatabases(ctx)
-			if err != nil {
-				logger.Log("event", "pgbouncer.error", "error", err, "msg", "could not contact PgBouncer")
-				goto PollConnections
-			}
-
-			var currentConnections = int64(0)
-			for _, db := range dbs {
-				currentConnections += db.CurrentConnections
-				if db.CurrentConnections > 0 {
-					logger.Log("event", "outstanding_connections", "database", db.Name, "count", db.CurrentConnections)
+				var currentConnections = int64(0)
+				for _, db := range dbs {
+					currentConnections += db.CurrentConnections
+					if db.CurrentConnections > 0 {
+						logger.Log("event", "outstanding_connections", "database", db.Name, "count", db.CurrentConnections)
+					}
 				}
-			}
 
-			outstandingConnections.Set(float64(currentConnections))
+				outstandingConnections.Set(float64(currentConnections))
 
-			if currentConnections > 0 {
-				logger.Log("event", "shutdown_pending", "total", currentConnections,
-					"msg", "waiting for outstanding connections to complete before terminating PgBouncer")
-				time.Sleep(*childProcessTerminationPollInterval)
-				goto PollConnections
-			}
+				if currentConnections > 0 {
+					logger.Log("event", "shutdown_pending", "total", currentConnections,
+						"msg", "waiting for outstanding connections to complete before terminating PgBouncer")
+					time.Sleep(*childProcessTerminationPollInterval)
+					goto PollConnections
+				}
 
-			logger.Log("event", "idle", "msg", "no more connections in PgBouncer, shutting down")
-		})
+				logger.Log("event", "idle", "msg", "no more connections in PgBouncer, shutting down")
+			})
+		}
 
 		{
 			var logger = kitlog.With(logger, "component", "pgbouncer.watch")
