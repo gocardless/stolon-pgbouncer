@@ -54,7 +54,7 @@ var (
 	superviseWatchRetryInterval         = supervise.Flag("watch-retry-interval", "Interval to retry constructing an etcd watcher").Default("5s").Duration()
 	supervisePgBouncerTimeout           = supervise.Flag("pgbouncer-timeout", "Timeout for PgBouncer operations").Default("5s").Duration()
 	supervisePgBouncerRetryTimeout      = supervise.Flag("pgbouncer-retry-timeout", "Retry failed PgBouncer operations at this interval").Default("5s").Duration()
-	childProcessTerminationGracePeriod  = supervise.Flag("termination-grace-period", "Pause before rejecting new PgBouncer connections (on shutdown)").Default("5s").Duration()
+	childProcessTerminationGracePeriod  = supervise.Flag("termination-grace-period", "Pause before rejecting new PgBouncer connections (on shutdown)").Default("15s").Duration()
 	childProcessTerminationPollInterval = supervise.Flag("termination-poll-interval", "Poll PgBouncer for outstanding connections at this rate").Default("10s").Duration()
 
 	pauser                     = app.Command("pauser", "Serve the PgBouncer pause API")
