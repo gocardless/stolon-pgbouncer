@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -53,7 +54,7 @@ var (
 	superviseWatchRetryInterval         = supervise.Flag("watch-retry-interval", "Interval to retry constructing an etcd watcher").Default("5s").Duration()
 	supervisePgBouncerTimeout           = supervise.Flag("pgbouncer-timeout", "Timeout for PgBouncer operations").Default("5s").Duration()
 	supervisePgBouncerRetryTimeout      = supervise.Flag("pgbouncer-retry-timeout", "Retry failed PgBouncer operations at this interval").Default("5s").Duration()
-	childProcessTerminationGracePeriod  = supervise.Flag("termination-grace-period", "Pause before rejecting new PgBouncer connections (on shutdown)").Default("5s").Duration()
+	childProcessTerminationGracePeriod  = supervise.Flag("termination-grace-period", "Pause before rejecting new PgBouncer connections (on shutdown)").Default("15s").Duration()
 	childProcessTerminationPollInterval = supervise.Flag("termination-poll-interval", "Poll PgBouncer for outstanding connections at this rate").Default("10s").Duration()
 
 	pauser                     = app.Command("pauser", "Serve the PgBouncer pause API")
@@ -356,12 +357,15 @@ func main() {
 		clusterIdentifier.WithLabelValues(stopt.ClusterName).Set(1)
 		storePollInterval.Set(float64(*supervisePollInterval / time.Second))
 
+		// Use this channel to signal when we first receive a keeper host. We can then wait
+		// until a valid value is received before booting PgBouncer, making it easy to
+		// construct useful health checks.
+		var once sync.Once
+		receivedKeeperHost := make(chan interface{})
+		signalReceivedKeeperHost := func() { once.Do(func() { close(receivedKeeperHost) }) }
+
 		{
 			var logger = kitlog.With(logger, "component", "pgbouncer.child")
-
-			if err := pgBouncer.GenerateConfig("0.0.0.0"); err != nil {
-				kingpin.Fatalf("failed to generate initial PgBouncer config: %v", err)
-			}
 
 			cmdCtx, cmdCancel := context.WithCancel(context.Background())
 
@@ -370,55 +374,69 @@ func main() {
 
 			// Termination handler for PgBouncer. Ensures we only quit PgBouncer once all
 			// connections have finished their work.
-			g.Add(cmd.Run, func(error) {
-				// Whatever happens, once we exit this block we want to terminate the PgBouncer
-				// process.
-				defer cmdCancel()
+			g.Add(
+				func() error {
+					logger.Log("event", "wait_for_keeper", "msg", "waiting for keeper host before starting PgBouncer")
 
-				logger.Log("event", "termination_grace_period", "msg", "waiting for grace period")
-				time.Sleep(*childProcessTerminationGracePeriod)
+					select {
+					case <-ctx.Done():
+						logger.Log("event", "context_expired", "msg", "asked to terminate before PgBouncer was ever started")
+						return nil
+					case <-receivedKeeperHost:
+						logger.Log("event", "starting_pgbouncer", "msg", "received keeper host, starting PgBouncer")
+						return cmd.Run()
+					}
+				},
+				func(error) {
+					// Whatever happens, once we exit this block we want to terminate the PgBouncer
+					// process.
+					defer cmdCancel()
 
-				logger.Log("event", "disable", "msg", "disabling new PgBouncer connections")
-				{
+					logger.Log("event", "termination_grace_period", "msg", "waiting for grace period")
+					time.Sleep(*childProcessTerminationGracePeriod)
+
+					logger.Log("event", "disable", "msg", "disabling new PgBouncer connections")
+					{
+						ctx, cancel := context.WithTimeout(context.Background(), *supervisePgBouncerTimeout)
+						defer cancel()
+
+						if err := pgBouncer.Disable(ctx); err != nil {
+							logger.Log("error", err, "msg", "failed to disable PgBouncer")
+							return
+						}
+					}
+
+				PollConnections:
+
 					ctx, cancel := context.WithTimeout(context.Background(), *supervisePgBouncerTimeout)
 					defer cancel()
 
-					if err := pgBouncer.Disable(ctx); err != nil {
-						logger.Log("error", err, "msg", "failed to disable PgBouncer")
-						return
+					dbs, err := pgBouncer.ShowDatabases(ctx)
+					if err != nil {
+						logger.Log("event", "pgbouncer.error", "error", err, "msg", "could not contact PgBouncer")
+						goto PollConnections
 					}
-				}
 
-			PollConnections:
-
-				ctx, cancel := context.WithTimeout(context.Background(), *supervisePgBouncerTimeout)
-				defer cancel()
-
-				dbs, err := pgBouncer.ShowDatabases(ctx)
-				if err != nil {
-					logger.Log("event", "pgbouncer.error", "error", err, "msg", "could not contact PgBouncer")
-					goto PollConnections
-				}
-
-				var currentConnections = int64(0)
-				for _, db := range dbs {
-					currentConnections += db.CurrentConnections
-					if db.CurrentConnections > 0 {
-						logger.Log("event", "outstanding_connections", "database", db.Name, "count", db.CurrentConnections)
+					var currentConnections = int64(0)
+					for _, db := range dbs {
+						currentConnections += db.CurrentConnections
+						if db.CurrentConnections > 0 {
+							logger.Log("event", "outstanding_connections", "database", db.Name, "count", db.CurrentConnections)
+						}
 					}
-				}
 
-				outstandingConnections.Set(float64(currentConnections))
+					outstandingConnections.Set(float64(currentConnections))
 
-				if currentConnections > 0 {
-					logger.Log("event", "shutdown_pending", "total", currentConnections,
-						"msg", "waiting for outstanding connections to complete before terminating PgBouncer")
-					time.Sleep(*childProcessTerminationPollInterval)
-					goto PollConnections
-				}
+					if currentConnections > 0 {
+						logger.Log("event", "shutdown_pending", "total", currentConnections,
+							"msg", "waiting for outstanding connections to complete before terminating PgBouncer")
+						time.Sleep(*childProcessTerminationPollInterval)
+						goto PollConnections
+					}
 
-				logger.Log("event", "idle", "msg", "no more connections in PgBouncer, shutting down")
-			})
+					logger.Log("event", "idle", "msg", "no more connections in PgBouncer, shutting down")
+				},
+			)
 		}
 
 		{
@@ -499,6 +517,12 @@ func main() {
 							if err := pgBouncer.GenerateConfig(masterAddress); err != nil {
 								return err
 							}
+
+							// Let the pgbouncer.child know we've got a value, and that it's ok to boot
+							// PgBouncer. We'll probably fail to reload PgBouncer immediately after the
+							// first time we run this as we'll race PgBouncer to start, however our
+							// subsequent retry will succeed.
+							signalReceivedKeeperHost()
 
 							logger.Log("event", "reload")
 							if err := pgBouncer.Reload(ctx); err != nil {
