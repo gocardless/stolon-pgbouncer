@@ -24,6 +24,6 @@ require (
 	github.com/satori/go.uuid v1.2.0
 	golang.org/x/crypto v0.0.0-20190422183909-d864b10871cd // indirect
 	google.golang.org/genproto v0.0.0-20190327125643-d831d65fe17d // indirect
-	google.golang.org/grpc v1.19.1
+	google.golang.org/grpc v1.21.0
 	gopkg.in/yaml.v2 v2.2.2 // indirect
 )
