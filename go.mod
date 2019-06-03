@@ -5,7 +5,7 @@ go 1.12
 require (
 	github.com/alecthomas/kingpin v2.2.6+incompatible
 	github.com/cloudflare/cfssl v0.0.0-20190409034051-768cd563887f
-	github.com/coreos/etcd v3.3.12+incompatible
+	github.com/coreos/etcd v3.3.13+incompatible
 	github.com/go-kit/kit v0.8.0
 	github.com/go-logfmt/logfmt v0.4.0 // indirect
 	github.com/gogo/protobuf v1.2.1 // indirect
