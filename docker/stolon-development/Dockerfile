@@ -6,7 +6,7 @@ RUN set -x \
       && cd "${GOPATH}/src/github.com/sorintlab/stolon" \
       && git remote add gocardless https://github.com/gocardless/stolon \
       && git fetch gocardless \
-      && git checkout 71d109541f800fcacb2d8e3222715d84e569ccb5 \
+      && git checkout 7f35be7825fccdfdc146c7f389a7957229c3af81 \
       && ./build
 
 # GoCardless runs this fork for PgBouncer metrics. We'll likely change this in
@@ -25,7 +25,8 @@ RUN set -x \
 FROM gocardless/stolon-pgbouncer-base:2019040201
 
 RUN set -x \
-      && apt-get install -y curl etcd-client supervisor postgresql-11 \
+      && apt-get update -y \
+      && apt-get install --no-install-recommends -y curl etcd-client supervisor postgresql-11 \
       && curl -fsL https://github.com/sorintlab/stolon/releases/download/v0.13.0/stolon-v0.13.0-linux-amd64.tar.gz -o /tmp/stolon.tar.gz \
       && tar xfvz /tmp/stolon.tar.gz -C /usr/local/bin --wildcards '*/bin/*' --strip-components=2 \
       && rm -v /tmp/stolon.tar.gz
