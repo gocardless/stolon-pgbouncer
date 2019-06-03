@@ -13,6 +13,7 @@ import (
 
 	"google.golang.org/grpc/metadata"
 
+	"github.com/buger/jsonparser"
 	"github.com/gocardless/stolon-pgbouncer/pkg/etcd"
 	"github.com/gocardless/stolon-pgbouncer/pkg/stolon"
 	"github.com/gocardless/stolon-pgbouncer/pkg/streams"
@@ -24,12 +25,13 @@ import (
 )
 
 type Failover struct {
-	logger    kitlog.Logger
-	client    *clientv3.Client
-	clients   map[string]FailoverClient
-	stolonctl stolon.Stolonctl
-	locker    locker
-	opt       FailoverOptions
+	logger        kitlog.Logger
+	client        *clientv3.Client
+	clients       map[string]FailoverClient
+	stolonctl     stolon.Stolonctl
+	sleepInterval string
+	locker        locker
+	opt           FailoverOptions
 }
 
 type FailoverOptions struct {
@@ -85,11 +87,71 @@ func (f *Failover) Run(ctx context.Context, deferCtx context.Context) error {
 		Step(f.CheckClusterHealthy),
 		Step(f.HealthCheckClients),
 		Step(f.AcquireLock).Defer(f.ReleaseLock),
+		Step(f.ShortenSleepInterval).Defer(f.RestoreSleepInterval),
 		Step(f.Pause).Defer(f.Resume),
 		Step(f.Failkeeper),
 	)(
 		ctx, deferCtx,
 	)
+}
+
+// ShortenSleepInterval temporarily applies a shorter sleep interval that can help stolon
+// components respond quicker to the failover. We cache the original interval to ensure we
+// can return the cluster to how it was prior to the failover.
+func (f *Failover) ShortenSleepInterval(ctx context.Context) error {
+	f.logger.Log("event", "cache_original_sleep_interval",
+		"msg", "load original sleep interval for replacement after failover")
+	cd, err := stolon.GetClusterdataBytes(ctx, f.client, f.opt.ClusterdataKey)
+	if err != nil {
+		return err
+	}
+
+	var interval time.Duration
+	f.sleepInterval, err = jsonparser.GetString(cd, "cluster", "spec", "sleepInterval")
+	if err == nil {
+		interval, err = time.ParseDuration(f.sleepInterval)
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to parse sleepInterval: %v", err)
+	}
+
+	f.logger.Log("event", "apply_short_sleep_interval", "msg", "apply short sleep interval")
+	cd, err = jsonparser.Set(cd, []byte(`"1s"`), "cluster", "spec", "sleepInterval")
+	if err != nil {
+		return err
+	}
+
+	_, err = f.client.Put(ctx, f.opt.ClusterdataKey, string(cd))
+	if err != nil {
+		return err
+	}
+
+	f.logger.Log("event", "wait_until_sleep_interval_applies", "interval", f.sleepInterval,
+		"msg", "wait twice the old sleep interval to ensure stolon components have reloaded")
+	time.Sleep(2 * interval)
+
+	return nil
+}
+
+// RestoreSleepInterval removes the temporary short sleep interval that we apply for the
+// purpose of fast failover.
+func (f *Failover) RestoreSleepInterval(ctx context.Context) error {
+	cd, err := stolon.GetClusterdataBytes(ctx, f.client, f.opt.ClusterdataKey)
+	if err != nil {
+		return err
+	}
+
+	cd, err = jsonparser.Set(cd, []byte(fmt.Sprintf(`"%s"`, f.sleepInterval)), "cluster", "spec", "sleepInterval")
+	if err != nil {
+		return err
+	}
+
+	f.logger.Log("event", "restore_sleep_interval", "interval", f.sleepInterval,
+		"msg", "restoring original sleep interval now failover is complete")
+	_, err = f.client.Put(ctx, f.opt.ClusterdataKey, string(cd))
+
+	return err
 }
 
 func (f *Failover) CheckClusterHealthy(ctx context.Context) error {

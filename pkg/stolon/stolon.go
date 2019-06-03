@@ -13,6 +13,21 @@ import (
 
 // GetClusterdata fetches and parses from etcd using the given key
 func GetClusterdata(ctx context.Context, client *clientv3.Client, key string) (*Clusterdata, error) {
+	clusterdataBytes, err := GetClusterdataBytes(ctx, client, key)
+	if err != nil {
+		return nil, err
+	}
+
+	var clusterdata = &Clusterdata{}
+	if err := json.Unmarshal(clusterdataBytes, clusterdata); err != nil {
+		return nil, errors.Wrap(err, "failed to parse clusterdata")
+	}
+
+	return clusterdata, nil
+}
+
+// GetClusterdataBytes returns a byte slice for dynamic manipulation.
+func GetClusterdataBytes(ctx context.Context, client *clientv3.Client, key string) ([]byte, error) {
 	resp, err := client.Get(ctx, key)
 	if err != nil {
 		return nil, err
@@ -22,12 +37,7 @@ func GetClusterdata(ctx context.Context, client *clientv3.Client, key string) (*
 		return nil, errors.New("no clusterdata found")
 	}
 
-	var clusterdata = &Clusterdata{}
-	if err := json.Unmarshal(resp.Kvs[0].Value, clusterdata); err != nil {
-		return nil, errors.Wrap(err, "failed to parse clusterdata")
-	}
-
-	return clusterdata, nil
+	return resp.Kvs[0].Value, nil
 }
 
 // Clusterdata is a minimal extraction that we need from stolon. Whenever we upgrade
