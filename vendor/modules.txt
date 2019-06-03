@@ -7,6 +7,8 @@ github.com/alecthomas/template/parse
 github.com/alecthomas/units
 # github.com/beorn7/perks v1.0.0
 github.com/beorn7/perks/quantile
+# github.com/buger/jsonparser v0.0.0-20181115193947-bf1c66bbce23
+github.com/buger/jsonparser
 # github.com/cloudflare/cfssl v0.0.0-20190409034051-768cd563887f
 github.com/cloudflare/cfssl/helpers
 github.com/cloudflare/cfssl/crypto/pkcs7
