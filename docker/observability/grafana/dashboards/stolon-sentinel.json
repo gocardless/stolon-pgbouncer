@@ -15,8 +15,7 @@
   "editable": true,
   "gnetId": null,
   "graphTooltip": 1,
-  "id": 3,
-  "iteration": 1559574079894,
+  "iteration": 1559577308250,
   "links": [],
   "panels": [
     {
@@ -95,11 +94,12 @@
       },
       "yaxes": [
         {
-          "format": "none",
+          "decimals": null,
+          "format": "s",
           "label": null,
-          "logBase": 1,
+          "logBase": 2,
           "max": null,
-          "min": null,
+          "min": "0",
           "show": true
         },
         {
@@ -182,6 +182,7 @@
       },
       "yaxes": [
         {
+          "decimals": 0,
           "format": "short",
           "label": null,
           "logBase": 1,
@@ -241,7 +242,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "increase(stolon_sentinel_leader_count[1m]) and on(instance) stolon_cluster_identifier{cluster_name=\"$cluster\"}",
+          "expr": "increase(stolon_sentinel_leader_count[$interval]) and on(instance) stolon_cluster_identifier{cluster_name=\"$cluster\"}",
           "format": "time_series",
           "hide": false,
           "intervalFactor": 1,
@@ -269,6 +270,7 @@
       },
       "yaxes": [
         {
+          "decimals": 0,
           "format": "short",
           "label": null,
           "logBase": 1,
@@ -292,7 +294,7 @@
     }
   ],
   "refresh": "15s",
-  "schemaVersion": 18,
+  "schemaVersion": 16,
   "style": "dark",
   "tags": [
     "stolon",
@@ -402,5 +404,5 @@
   "timezone": "",
   "title": "stolon-sentinel",
   "uid": "34-Tv4WZz",
-  "version": 3
+  "version": 1
 }
