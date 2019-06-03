@@ -56,7 +56,7 @@ func RunAcceptance(ctx context.Context, logger kitlog.Logger) {
 			)
 
 			JustBeforeEach(func() {
-				err = execCommand(ctx, "docker-compose", "exec", "pgbouncer", binary, "failover", "--pause-expiry", "50s")
+				err = execCommand(ctx, "docker-compose", "exec", "pgbouncer", binary, "failover", "--pause-expiry", "20s")
 			})
 
 			// Confirm PgBouncers have settled before marking test as success
