@@ -26,8 +26,8 @@ available Postgres clusters. stolon aims to recover from node failures and
 ensure data durability across your cluster.
 
 stolon-pgbouncer extends stolon with first class support for PgBouncer, a
-Postgres connection pooler. By introducing PgBouncer it's possible to offer
-zero-downtime planner failover of Postgres primaries, allowing users to perform
+Postgres connection pooler. By introducing PgBouncer, it's possible to offer
+zero-downtime planned failovers of Postgres primaries, allowing users to perform
 maintenance operations without taking downtime.
 
 Live information about cluster health is maintained by stolon in a consistent
@@ -53,12 +53,12 @@ convenience here:
   node according to the clusterview
 - `sentinel` discovers and monitors the keepers, and calculates the optimal
   clusterview
-- `proxy` ensures connections are pointing the master PostgreSQL node and fences
+- `proxy` ensures connections are pointing to the master PostgreSQL node and fences
   (forcibly closes connections) to unelected masters
 
 We use these terms throughout this README, and encourage referring to the stolon
 docs whenever anything is unclear.
- 
+
 ### Playground
 
 We have created a Dockerised sandbox environment that boots a three node
@@ -104,7 +104,7 @@ keeper2 true    172.24.0.6:5432         true
 
 ### Node Roles
 
-In a stolon-pgbouncer cluster, you will typically run two types of node: the
+In a stolon-pgbouncer cluster, you will typically run two types of nodes: the
 Postgres nodes where we run the keeper/Postgres/PgBouncer, and the proxy nodes
 that run a supervised PgBouncer that provides connectivity to our cluster (this
 is what applications will connect via).
@@ -130,7 +130,7 @@ connections need to be paused before we move the Postgres primary.
 The intention is for all cluster connections to be routed to just one PgBouncer
 at any one time, and for that PgBouncer to be co-located with our primary to
 avoid unnecessary network hops. While you could connect via any of the keeper
-node PgBouncers, our stolon-pgbouncer supervise processes will ensure we
+node PgBouncers, our stolon-pgbouncer `supervise` processes will ensure we
 converge on the primary.
 
 #### Proxy
@@ -178,8 +178,8 @@ The failover process is as follows:
 1. Once stolon has elected a new primary, resume PgBouncer pools
 1. Release etcd lock
 
-This flow is encoded in the `Run` method in the [Run](pkg/failover/failover.go)
-method, and looks like this:
+This flow is encoded in the [`Run`](pkg/failover/failover.go) method,
+and looks like this:
 
 ```go
 Pipeline(
@@ -191,8 +191,8 @@ Pipeline(
 )
 ```
 
-Once the new primary is ready, our Proxy nodes running stolon-pgbouncer
-`supervise` will template new PgBouncer configuration that points at the new
+Once the new primary is ready, our Proxy nodes running stolon-pgbouncer's
+`supervise` will template a new PgBouncer configuration that points at the new
 master. Connections will resume their operation unaware that they now speak to a
 different Postgres server than before.
 
@@ -277,4 +277,4 @@ releases and publish docker images. Just update the [`VERSION`](VERSION) file
 with the new version and push to master.
 
 Our versioning system follows [semver guidelines](https://semver.org/) and care
-should be taken not to adhere to these rules.
+should be taken to adhere to these rules.

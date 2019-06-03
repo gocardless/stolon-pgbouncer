@@ -4,7 +4,7 @@ This directory contains docker images that are used in the stolon-pgbouncer
 project. All these images are tagged as YYYYMMDDXX where XX is an index of build
 for that day.
 
-You can find makefile targets to build and push these images in the root of the
+You can find Makefile targets to build and push these images in the root of the
 project.
 
 ## base
@@ -23,5 +23,5 @@ containers should be run with this base image.
 ## stolon-development
 
 Our docker-compose setup relies on this image to boot the different machine
-roles, such as the supervised pgbouncer and keepers. Running docker-compose
-build will generate this image.
+roles, such as the supervised pgbouncer and keepers. Running `docker-compose
+build` will generate this image.
