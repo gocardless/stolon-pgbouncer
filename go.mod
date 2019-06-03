@@ -12,7 +12,7 @@ require (
 	github.com/golang/protobuf v1.3.1
 	github.com/google/certificate-transparency-go v1.0.21 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.0.0
-	github.com/jackc/pgx v3.3.0+incompatible
+	github.com/jackc/pgx v3.4.0+incompatible
 	github.com/oklog/run v1.0.0
 	github.com/onsi/ginkgo v1.8.0
 	github.com/onsi/gomega v1.5.0
