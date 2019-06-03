@@ -72,7 +72,7 @@ type ConnConfig struct {
 	UseFallbackTLS    bool        // Try FallbackTLSConfig if connecting with TLSConfig fails. Used for preferring TLS, but allowing unencrypted, or vice-versa
 	FallbackTLSConfig *tls.Config // config for fallback TLS connection (only used if UseFallBackTLS is true)-- nil disables TLS
 	Logger            Logger
-	LogLevel          int
+	LogLevel          LogLevel
 	Dial              DialFunc
 	RuntimeParams     map[string]string                     // Run-time parameters to set on connection as session default values (e.g. search_path or application_name)
 	OnNotice          NoticeHandler                         // Callback function called when a notice response is received.
@@ -123,7 +123,7 @@ type Conn struct {
 	channels           map[string]struct{}
 	notifications      []*Notification
 	logger             Logger
-	logLevel           int
+	logLevel           LogLevel
 	fp                 *fastpath
 	poolResetCount     int
 	preallocatedRows   []Rows
@@ -707,7 +707,7 @@ func (old ConnConfig) Merge(other ConnConfig) ConnConfig {
 		cc.Dial = other.Dial
 	}
 
-	cc.PreferSimpleProtocol = other.PreferSimpleProtocol
+	cc.PreferSimpleProtocol = old.PreferSimpleProtocol || other.PreferSimpleProtocol
 
 	cc.RuntimeParams = make(map[string]string)
 	for k, v := range old.RuntimeParams {
@@ -1096,11 +1096,9 @@ func (c *Conn) prepareEx(name, sql string, opts *PrepareExOptions) (ps *Prepared
 	buf = appendDescribe(buf, 'S', name)
 	buf = appendSync(buf)
 
-	n, err := c.conn.Write(buf)
+	_, err = c.conn.Write(buf)
 	if err != nil {
-		if fatalWriteErr(n, err) {
-			c.die(err)
-		}
+		c.die(err)
 		return nil, err
 	}
 	c.pendingReadyForQueryCount++
@@ -1133,7 +1131,8 @@ func (c *Conn) prepareEx(name, sql string, opts *PrepareExOptions) (ps *Prepared
 						ps.FieldDescriptions[i].FormatCode = TextFormatCode
 					}
 				} else {
-					return nil, errors.Errorf("unknown oid: %d", ps.FieldDescriptions[i].DataType)
+					fd := ps.FieldDescriptions[i]
+					return nil, errors.Errorf("unknown oid: %d, name: %s", fd.DataType, fd.Name)
 				}
 			}
 		case *pgproto3.ReadyForQuery:
@@ -1359,27 +1358,14 @@ func (c *Conn) sendPreparedQuery(ps *PreparedStatement, arguments ...interface{}
 	buf = appendExecute(buf, "", 0)
 	buf = appendSync(buf)
 
-	n, err := c.conn.Write(buf)
+	_, err = c.conn.Write(buf)
 	if err != nil {
-		if fatalWriteErr(n, err) {
-			c.die(err)
-		}
+		c.die(err)
 		return err
 	}
 	c.pendingReadyForQueryCount++
 
 	return nil
-}
-
-// fatalWriteError takes the response of a net.Conn.Write and determines if it is fatal
-func fatalWriteErr(bytesWritten int, err error) bool {
-	// Partial writes break the connection
-	if bytesWritten > 0 {
-		return true
-	}
-
-	netErr, is := err.(net.Error)
-	return !(is && netErr.Timeout())
 }
 
 // Exec executes sql. sql can be either a prepared statement name or an SQL string.
@@ -1439,6 +1425,8 @@ func (c *Conn) rxAuthenticationX(msg *pgproto3.Authentication) (err error) {
 	case pgproto3.AuthTypeMD5Password:
 		digestedPassword := "md5" + hexMD5(hexMD5(c.config.Password+c.config.User)+string(msg.Salt[:]))
 		err = c.txPasswordMessage(digestedPassword)
+	case pgproto3.AuthTypeSASL:
+		err = c.scramAuth(msg.SASLAuthMechanisms)
 	default:
 		err = errors.New("Received unknown authentication message")
 	}
@@ -1623,7 +1611,7 @@ func (c *Conn) unlock() error {
 	return nil
 }
 
-func (c *Conn) shouldLog(lvl int) bool {
+func (c *Conn) shouldLog(lvl LogLevel) bool {
 	return c.logger != nil && c.logLevel >= lvl
 }
 
@@ -1647,7 +1635,7 @@ func (c *Conn) SetLogger(logger Logger) Logger {
 
 // SetLogLevel replaces the current log level and returns the previous log
 // level.
-func (c *Conn) SetLogLevel(lvl int) (int, error) {
+func (c *Conn) SetLogLevel(lvl LogLevel) (LogLevel, error) {
 	oldLvl := c.logLevel
 
 	if lvl < LogLevelNone || lvl > LogLevelTrace {
@@ -1790,8 +1778,8 @@ func (c *Conn) execEx(ctx context.Context, sql string, options *QueryExOptions, 
 		buf = appendSync(buf)
 
 		c.lastStmtSent = true
-		n, err := c.conn.Write(buf)
-		if err != nil && fatalWriteErr(n, err) {
+		_, err = c.conn.Write(buf)
+		if err != nil {
 			c.die(err)
 			return "", err
 		}
