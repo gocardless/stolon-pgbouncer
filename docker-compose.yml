@@ -30,6 +30,7 @@ services:
       - --cluster-name=main
       - --store-backend=etcdv3
       - --store-endpoints=etcd-store:2379
+      - --metrics-listen-address=0.0.0.0:9459
 
   pgbouncer:
     hostname: pgbouncer

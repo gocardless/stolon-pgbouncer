@@ -25,6 +25,11 @@ scrape_configs:
           - "keeper1:9459"
           - "keeper2:9459"
     relabel_configs: *relabel
+  - job_name: "stolon-sentinel"
+    static_configs:
+      - targets:
+          - "sentinel:9459"
+    relabel_configs: *relabel
   - job_name: "pgbouncer"
     static_configs:
       - targets:
