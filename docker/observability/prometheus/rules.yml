@@ -151,7 +151,7 @@ groups:
     rules:
       - alert: StolonKeeperStaleSync
         expr: >
-          stolon_cluster_identifier * on(instance) group_right(cluster_name) (
+          stolon_cluster_identifier * ignoring(cluster_name) group_right(cluster_name) (
             time() - stolon_keeper_last_sync_success_seconds
           ) > 120
         labels:
@@ -170,7 +170,7 @@ groups:
 
       - alert: StolonKeeperRequiresRestart
         expr: >
-          stolon_cluster_identifier * on(instance) group_right(cluster_name) (
+          stolon_cluster_identifier * ignoring(cluster_name) group_right(cluster_name) (
             stolon_keeper_needs_restart == 1
           )
         labels:
