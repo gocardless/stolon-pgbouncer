@@ -21,7 +21,7 @@ services:
           - etcd-store
 
   sentinel:
-    image: &stolonDevelopmentImage gocardless/stolon-development:2019051602
+    image: &stolonDevelopmentImage gocardless/stolon-development:2019060300
     restart: on-failure
     depends_on:
       - etcd-store
@@ -30,6 +30,7 @@ services:
       - --cluster-name=main
       - --store-backend=etcdv3
       - --store-endpoints=etcd-store:2379
+      - --metrics-listen-address=0.0.0.0:9459
 
   pgbouncer:
     hostname: pgbouncer
