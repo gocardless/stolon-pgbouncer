@@ -161,7 +161,7 @@ golang.org/x/text/encoding/unicode
 golang.org/x/text/internal/utf8internal
 # google.golang.org/genproto v0.0.0-20190327125643-d831d65fe17d
 google.golang.org/genproto/googleapis/rpc/status
-# google.golang.org/grpc v1.21.0
+# google.golang.org/grpc v1.21.1
 google.golang.org/grpc
 google.golang.org/grpc/codes
 google.golang.org/grpc/metadata
