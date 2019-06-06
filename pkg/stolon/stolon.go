@@ -83,7 +83,7 @@ type DBStatus struct {
 }
 
 func (d DB) String() string {
-	if reflect.DeepEqual(d, &DB{}) {
+	if reflect.DeepEqual(&d, &DB{}) {
 		return "unknown"
 	}
 

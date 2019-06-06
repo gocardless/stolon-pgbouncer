@@ -5,6 +5,49 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+var _ = Describe("DB", func() {
+	var (
+		db DB
+	)
+
+	Describe(".String()", func() {
+		var (
+			dbString string
+		)
+
+		JustBeforeEach(func() {
+			dbString = db.String()
+		})
+
+		Context("Empty database", func() {
+			BeforeEach(func() { db = DB{} })
+
+			It("Renders unknown", func() {
+				Expect(dbString).To(Equal("unknown"))
+			})
+		})
+
+		Context("Non-empty database", func() {
+			BeforeEach(func() {
+				db = DB{
+					Spec: DBSpec{
+						KeeperUID:                   "keeper0",
+						ExternalSynchronousStandbys: []string{},
+					},
+					Status: DBStatus{
+						ListenAddress: "10.0.0.1",
+						Port:          "5432",
+					},
+				}
+			})
+
+			It("Renders useful human format", func() {
+				Expect(dbString).To(Equal("keeper0 (10.0.0.1)"))
+			})
+		})
+	})
+})
+
 var _ = Describe("Clusterdata", func() {
 	var (
 		clusterdata *Clusterdata

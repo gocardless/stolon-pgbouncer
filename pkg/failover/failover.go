@@ -117,7 +117,7 @@ func (f *Failover) ShortenSleepInterval(ctx context.Context) error {
 		return fmt.Errorf("failed to parse sleepInterval: %v", err)
 	}
 
-	f.logger.Log("event", "apply_short_sleep_interval", "msg", "apply short sleep interval")
+	f.logger.Log("event", "apply_short_sleep_interval", "interval", "1s", "msg", "apply short sleep interval")
 	cd, err = jsonparser.Set(cd, []byte(`"1s"`), "cluster", "spec", "sleepInterval")
 	if err != nil {
 		return err
