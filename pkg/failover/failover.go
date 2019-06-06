@@ -30,6 +30,7 @@ type Failover struct {
 	clients       map[string]FailoverClient
 	stolonctl     stolon.Stolonctl
 	sleepInterval string
+	pausedAt      time.Time
 	locker        locker
 	opt           FailoverOptions
 }
@@ -211,6 +212,10 @@ func (f *Failover) Pause(ctx context.Context) error {
 	ctx, cancel := NewClientCtx(ctx, f.opt.Token, f.opt.PauseExpiry+time.Second)
 	defer cancel()
 
+	// We're about to try pausing traffic. Record this time to enable logging the impact of
+	// the failover.
+	f.pausedAt = time.Now()
+
 	err := f.EachClient(logger, func(endpoint string, client FailoverClient) error {
 		_, err := client.Pause(
 			ctx, &PauseRequest{
@@ -244,6 +249,9 @@ func (f *Failover) Resume(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to resume pgbouncers")
 	}
+
+	logger.Log("event", "pgbouncer_resumed", "duration", time.Since(f.pausedAt).Seconds(),
+		"msg", "resumed all PgBouncers after duration seconds")
 
 	return nil
 }
