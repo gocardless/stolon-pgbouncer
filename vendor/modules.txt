@@ -161,7 +161,7 @@ golang.org/x/text/encoding/unicode
 golang.org/x/text/internal/utf8internal
 # google.golang.org/genproto v0.0.0-20190327125643-d831d65fe17d
 google.golang.org/genproto/googleapis/rpc/status
-# google.golang.org/grpc v1.21.1
+# google.golang.org/grpc v1.22.0
 google.golang.org/grpc
 google.golang.org/grpc/codes
 google.golang.org/grpc/metadata
@@ -189,6 +189,7 @@ google.golang.org/grpc/peer
 google.golang.org/grpc/resolver
 google.golang.org/grpc/resolver/dns
 google.golang.org/grpc/resolver/passthrough
+google.golang.org/grpc/serviceconfig
 google.golang.org/grpc/stats
 google.golang.org/grpc/tap
 google.golang.org/grpc/credentials/internal
