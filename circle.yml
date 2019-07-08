@@ -3,8 +3,6 @@ version: 2
 
 references:
   docker_build_image: &docker_build_image
-    environment:
-      GO111MODULE: "on"
     working_directory: /go/src/github.com/gocardless/stolon-pgbouncer
     docker:
       - image: &image gocardless/stolon-pgbouncer-circleci:2019040303
@@ -43,6 +41,7 @@ jobs:
     steps:
       - checkout
       - run: GO111MODULE=on go mod vendor
+      - run: GO111MODULE=on go mod tidy
       - run: |
           git config --global user.email "robot@gocardless.com"
           git config --global user.name "GoCardless Robot"
