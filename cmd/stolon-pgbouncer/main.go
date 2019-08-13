@@ -76,6 +76,12 @@ var (
 	failoverResumeTimeout      = failover.Flag("resume-timeout", "Timeout for issuing PgBouncer resumes").Default("5s").Duration()
 	failoverStolonctlTimeout   = failover.Flag("stolonctl-timeout", "Timeout for executing stolonctl commands").Default("5s").Duration()
 
+	withLock                 = app.Command("with-lock", "Run command with failover lock. Exit status 1=error, 2=no-lock, 3=command-error")
+	withLockStolonOptions    = newStolonOptions(withLock)
+	withLockTimeout          = withLock.Flag("timeout", "Timeout before giving up on acquiring lock").Default("5s").Duration()
+	withLockCommand          = withLock.Arg("COMMAND", "Path to command binary").String()
+	withLockCommandArguments = withLock.Arg("ARGS", "Command arguments").Strings()
+
 	status              = app.Command("status", "Show information about the current status of the cluster")
 	statusStolonOptions = newStolonOptions(status)
 	statusToken         = status.Flag("token", "Authentication token for pauser API").Default("").Envar("STBOUNCER_FAILOVER_TOKEN").String()
@@ -193,7 +199,23 @@ func init() {
 	prometheus.MustRegister(lastReloadSeconds)
 }
 
+type exitError struct {
+	error
+	code int
+}
+
 func main() {
+	if err := mainError(); err != nil {
+		logger.Log("error", err, "msg", "exiting with error")
+		if err, ok := err.(exitError); ok {
+			os.Exit(err.code)
+		} else {
+			os.Exit(1)
+		}
+	}
+}
+
+func mainError() error {
 	command := kingpin.MustParse(app.Parse(os.Args[1:]))
 
 	logger = kitlog.NewLogfmtLogger(kitlog.NewSyncWriter(os.Stderr))
@@ -253,7 +275,47 @@ func main() {
 			checks[keeperUID] = *check
 		}
 
-		renderHealthCheck(checks)
+		fmt.Printf("\n")
+		for client, hc := range checks {
+			fmt.Printf("%s: %s", client, pkgfailover.HealthCheckToString(hc))
+		}
+
+		return nil
+
+	case withLock.FullCommand():
+		stopt := withLockStolonOptions
+
+		client := mustStore(stopt)
+		_, key := mustClusterdata(ctx, client, stopt)
+		locker := pkgfailover.NewLock(client, key)
+
+		timeoutCtx, cancel := context.WithTimeout(ctx, *withLockTimeout)
+		defer cancel()
+
+		logger.Log("event", "acquiring_lock")
+		if err := locker.Lock(timeoutCtx); err != nil {
+			return exitError{err, 2}
+		}
+
+		// Whatever happens, release our lock
+		defer func() {
+			logger.Log("event", "releasing_lock")
+			if err := locker.Unlock(context.Background()); err != nil {
+				logger.Log("event", "failed_to_release_lock", "error", err)
+			}
+		}()
+
+		cmd := exec.CommandContext(ctx, *withLockCommand, *withLockCommandArguments...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
+		logger.Log("event", "run_command", "command", *withLockCommand, "arguments", strings.Join(*withLockCommandArguments, " "))
+		err := cmd.Run()
+		if err != nil {
+			err = exitError{err, 3}
+		}
+
+		return err
 
 	case failover.FullCommand():
 		stopt := failoverStolonOptions
@@ -293,10 +355,7 @@ func main() {
 			err = failover.Run(ctx, deferCtx)
 		}
 
-		if err != nil {
-			logger.Log("error", err, "msg", "exiting with error")
-			os.Exit(1)
-		}
+		return err
 
 	case pauser.FullCommand():
 		var logger = kitlog.With(logger, "component", "pauser.api")
@@ -342,10 +401,7 @@ func main() {
 		}()
 
 		logger.Log("event", "listen", "address", *pauserBindAddress)
-		if err := grpcServer.Serve(listen); err != nil {
-			logger.Log("error", err.Error(), "msg", "exiting with error")
-			os.Exit(1)
-		}
+		return grpcServer.Serve(listen)
 
 	case supervise.FullCommand():
 		var g run.Group
@@ -547,20 +603,10 @@ func main() {
 			)
 		}
 
-		if err := g.Run(); err != nil {
-			logger.Log("error", err.Error(), "msg", "exiting with error")
-		}
+		return g.Run()
 	}
 
-	logger.Log("event", "shutdown")
-}
-
-// Renders a HealthCheckResponse as human-readable text to stdout
-func renderHealthCheck(healthchecks map[string]pkgfailover.HealthCheckResponse) {
-	fmt.Printf("\n")
-	for client, hc := range healthchecks {
-		fmt.Printf("%s: %s", client, pkgfailover.HealthCheckToString(hc))
-	}
+	panic("did not recognise command")
 }
 
 // Set by goreleaser

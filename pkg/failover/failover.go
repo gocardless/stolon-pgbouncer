@@ -62,18 +62,25 @@ func NewClientCtx(ctx context.Context, token string, timeout time.Duration) (con
 }
 
 func NewFailover(logger kitlog.Logger, client *clientv3.Client, clients map[string]FailoverClient, stolonctl stolon.Stolonctl, opt FailoverOptions) *Failover {
-	session, _ := concurrency.NewSession(client)
-
 	return &Failover{
 		logger:    logger,
 		client:    client,
 		clients:   clients,
 		stolonctl: stolonctl,
 		opt:       opt,
-		locker: concurrency.NewMutex(
-			session, fmt.Sprintf("%s/failover", opt.ClusterdataKey),
-		),
+		locker:    NewLock(client, opt.ClusterdataKey),
 	}
+}
+
+// NewLock returns a locker that is expected to provide exclusive access to the
+// clusterdata resource. Any application trying to modify clusterdata- such as a config
+// management system applying clusterdata configuration- should acquire this lock before
+// making changes.
+func NewLock(client *clientv3.Client, clusterdataKey string) locker {
+	session, _ := concurrency.NewSession(client)
+	return concurrency.NewMutex(
+		session, fmt.Sprintf("%s/failover", clusterdataKey),
+	)
 }
 
 // Run triggers the failover process. We model this as a Pipeline of steps, where each
