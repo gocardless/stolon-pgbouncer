@@ -63,7 +63,7 @@ github.com/kr/logfmt
 github.com/matttproud/golang_protobuf_extensions/pbutil
 # github.com/oklog/run v1.0.0
 github.com/oklog/run
-# github.com/onsi/ginkgo v1.8.0
+# github.com/onsi/ginkgo v1.9.0
 github.com/onsi/ginkgo
 github.com/onsi/ginkgo/config
 github.com/onsi/ginkgo/internal/codelocation
