@@ -19,6 +19,7 @@ require (
 	github.com/golang/protobuf v1.3.2
 	github.com/google/btree v1.0.0 // indirect
 	github.com/google/certificate-transparency-go v1.0.21 // indirect
+	github.com/google/uuid v1.1.1 // indirect
 	github.com/gorilla/websocket v1.4.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.0.0
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0 // indirect
@@ -46,4 +47,5 @@ require (
 	google.golang.org/genproto v0.0.0-20190327125643-d831d65fe17d // indirect
 	google.golang.org/grpc v1.22.1
 	gopkg.in/yaml.v2 v2.2.2 // indirect
+	sigs.k8s.io/yaml v1.1.0 // indirect
 )
