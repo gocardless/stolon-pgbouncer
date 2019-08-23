@@ -4,6 +4,7 @@ go 1.12
 
 require (
 	github.com/alecthomas/kingpin v2.2.6+incompatible
+	github.com/buger/jsonparser v0.0.0-20181115193947-bf1c66bbce23
 	github.com/cloudflare/cfssl v0.0.0-20190409034051-768cd563887f
 	github.com/cockroachdb/apd v1.1.0 // indirect
 	github.com/coreos/bbolt v1.3.3 // indirect

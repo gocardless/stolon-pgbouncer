@@ -13,6 +13,7 @@ import (
 
 	"google.golang.org/grpc/metadata"
 
+	"github.com/buger/jsonparser"
 	"github.com/gocardless/stolon-pgbouncer/pkg/etcd"
 	"github.com/gocardless/stolon-pgbouncer/pkg/stolon"
 	"github.com/gocardless/stolon-pgbouncer/pkg/streams"
@@ -24,12 +25,14 @@ import (
 )
 
 type Failover struct {
-	logger    kitlog.Logger
-	client    *clientv3.Client
-	clients   map[string]FailoverClient
-	stolonctl stolon.Stolonctl
-	locker    locker
-	opt       FailoverOptions
+	logger        kitlog.Logger
+	client        *clientv3.Client
+	clients       map[string]FailoverClient
+	stolonctl     stolon.Stolonctl
+	sleepInterval string
+	pausedAt      time.Time
+	locker        locker
+	opt           FailoverOptions
 }
 
 type FailoverOptions struct {
@@ -59,18 +62,25 @@ func NewClientCtx(ctx context.Context, token string, timeout time.Duration) (con
 }
 
 func NewFailover(logger kitlog.Logger, client *clientv3.Client, clients map[string]FailoverClient, stolonctl stolon.Stolonctl, opt FailoverOptions) *Failover {
-	session, _ := concurrency.NewSession(client)
-
 	return &Failover{
 		logger:    logger,
 		client:    client,
 		clients:   clients,
 		stolonctl: stolonctl,
 		opt:       opt,
-		locker: concurrency.NewMutex(
-			session, fmt.Sprintf("%s/failover", opt.ClusterdataKey),
-		),
+		locker:    NewLock(client, opt.ClusterdataKey),
 	}
+}
+
+// NewLock returns a locker that is expected to provide exclusive access to the
+// clusterdata resource. Any application trying to modify clusterdata- such as a config
+// management system applying clusterdata configuration- should acquire this lock before
+// making changes.
+func NewLock(client *clientv3.Client, clusterdataKey string) locker {
+	session, _ := concurrency.NewSession(client)
+	return concurrency.NewMutex(
+		session, fmt.Sprintf("%s/failover", clusterdataKey),
+	)
 }
 
 // Run triggers the failover process. We model this as a Pipeline of steps, where each
@@ -85,11 +95,71 @@ func (f *Failover) Run(ctx context.Context, deferCtx context.Context) error {
 		Step(f.CheckClusterHealthy),
 		Step(f.HealthCheckClients),
 		Step(f.AcquireLock).Defer(f.ReleaseLock),
+		Step(f.ShortenSleepInterval).Defer(f.RestoreSleepInterval),
 		Step(f.Pause).Defer(f.Resume),
 		Step(f.Failkeeper),
 	)(
 		ctx, deferCtx,
 	)
+}
+
+// ShortenSleepInterval temporarily applies a shorter sleep interval that can help stolon
+// components respond quicker to the failover. We cache the original interval to ensure we
+// can return the cluster to how it was prior to the failover.
+func (f *Failover) ShortenSleepInterval(ctx context.Context) error {
+	f.logger.Log("event", "cache_original_sleep_interval",
+		"msg", "load original sleep interval for replacement after failover")
+	cd, err := stolon.GetClusterdataBytes(ctx, f.client, f.opt.ClusterdataKey)
+	if err != nil {
+		return err
+	}
+
+	var interval time.Duration
+	f.sleepInterval, err = jsonparser.GetString(cd, "cluster", "spec", "sleepInterval")
+	if err == nil {
+		interval, err = time.ParseDuration(f.sleepInterval)
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to parse sleepInterval: %v", err)
+	}
+
+	f.logger.Log("event", "apply_short_sleep_interval", "interval", "1s", "msg", "apply short sleep interval")
+	cd, err = jsonparser.Set(cd, []byte(`"1s"`), "cluster", "spec", "sleepInterval")
+	if err != nil {
+		return err
+	}
+
+	_, err = f.client.Put(ctx, f.opt.ClusterdataKey, string(cd))
+	if err != nil {
+		return err
+	}
+
+	f.logger.Log("event", "wait_until_sleep_interval_applies", "interval", f.sleepInterval,
+		"msg", "wait twice the old sleep interval to ensure stolon components have reloaded")
+	time.Sleep(2 * interval)
+
+	return nil
+}
+
+// RestoreSleepInterval removes the temporary short sleep interval that we apply for the
+// purpose of fast failover.
+func (f *Failover) RestoreSleepInterval(ctx context.Context) error {
+	cd, err := stolon.GetClusterdataBytes(ctx, f.client, f.opt.ClusterdataKey)
+	if err != nil {
+		return err
+	}
+
+	cd, err = jsonparser.Set(cd, []byte(fmt.Sprintf(`"%s"`, f.sleepInterval)), "cluster", "spec", "sleepInterval")
+	if err != nil {
+		return err
+	}
+
+	f.logger.Log("event", "restore_sleep_interval", "interval", f.sleepInterval,
+		"msg", "restoring original sleep interval now failover is complete")
+	_, err = f.client.Put(ctx, f.opt.ClusterdataKey, string(cd))
+
+	return err
 }
 
 func (f *Failover) CheckClusterHealthy(ctx context.Context) error {
@@ -149,6 +219,10 @@ func (f *Failover) Pause(ctx context.Context) error {
 	ctx, cancel := NewClientCtx(ctx, f.opt.Token, f.opt.PauseExpiry+time.Second)
 	defer cancel()
 
+	// We're about to try pausing traffic. Record this time to enable logging the impact of
+	// the failover.
+	f.pausedAt = time.Now()
+
 	err := f.EachClient(logger, func(endpoint string, client FailoverClient) error {
 		_, err := client.Pause(
 			ctx, &PauseRequest{
@@ -182,6 +256,9 @@ func (f *Failover) Resume(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to resume pgbouncers")
 	}
+
+	logger.Log("event", "pgbouncer_resumed", "duration", time.Since(f.pausedAt).Seconds(),
+		"msg", "resumed all PgBouncers after duration seconds")
 
 	return nil
 }
