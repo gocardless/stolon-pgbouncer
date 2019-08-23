@@ -52,7 +52,7 @@ github.com/hpcloud/tail/ratelimiter
 github.com/hpcloud/tail/util
 github.com/hpcloud/tail/watch
 github.com/hpcloud/tail/winfile
-# github.com/jackc/pgx v3.4.0+incompatible
+# github.com/jackc/pgx v3.5.0+incompatible
 github.com/jackc/pgx
 github.com/jackc/pgx/pgtype
 github.com/jackc/pgx/internal/sanitize
