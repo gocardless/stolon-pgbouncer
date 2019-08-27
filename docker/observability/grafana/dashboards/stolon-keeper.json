@@ -16,7 +16,7 @@
   "gnetId": null,
   "graphTooltip": 1,
   "id": 1,
-  "iteration": 1558014956765,
+  "iteration": 1566914971768,
   "links": [],
   "panels": [
     {
@@ -224,7 +224,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "time() - ((stolon_keeper_last_sync_success_seconds > 0) and ignoring(cluster_name) stolon_cluster_identifier{cluster_name=\"$cluster\"})",
+          "expr": "time() - ((stolon_keeper_last_sync_success_seconds > 0) and on(instance) stolon_cluster_identifier{cluster_name=\"$cluster\", component=\"keeper\"})",
           "format": "time_series",
           "intervalFactor": 1,
           "legendFormat": "{{ instance }}",
@@ -321,7 +321,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "time() - ((stolon_keeper_clusterdata_last_valid_update_seconds > 0) and ignoring(cluster_name) stolon_cluster_identifier{cluster_name=\"$cluster\"})",
+          "expr": "time() - ((stolon_keeper_clusterdata_last_valid_update_seconds > 0) and on(instance) stolon_cluster_identifier{cluster_name=\"$cluster\", component=\"keeper\"})",
           "format": "time_series",
           "intervalFactor": 1,
           "legendFormat": "{{ instance }}",
@@ -488,5 +488,5 @@
   "timezone": "",
   "title": "stolon-keeper",
   "uid": "viJqeQkWk",
-  "version": 3
+  "version": 1
 }

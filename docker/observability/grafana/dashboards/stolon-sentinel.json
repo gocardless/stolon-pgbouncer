@@ -15,7 +15,8 @@
   "editable": true,
   "gnetId": null,
   "graphTooltip": 1,
-  "iteration": 1559577308250,
+  "id": 3,
+  "iteration": 1566915443685,
   "links": [],
   "panels": [
     {
@@ -58,7 +59,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "(time() - stolon_sentinel_last_cluster_check_success_seconds and ignoring(cluster_name, store_prefix) stolon_cluster_identifier{cluster_name=\"$cluster\"}) < 10000000",
+          "expr": "(time() - stolon_sentinel_last_cluster_check_success_seconds and on(instance) stolon_cluster_identifier{cluster_name=\"$cluster\", component=\"sentinel\"}) < 10000000",
           "format": "time_series",
           "intervalFactor": 1,
           "legendFormat": "{{ instance }}",
@@ -154,7 +155,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "stolon_sentinel_is_leader and on(instance) stolon_cluster_identifier{cluster_name=\"$cluster\"}",
+          "expr": "stolon_sentinel_is_leader and on(instance) stolon_cluster_identifier{cluster_name=\"$cluster\", component=\"sentinel\"}",
           "format": "time_series",
           "hide": false,
           "intervalFactor": 1,
@@ -242,7 +243,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "increase(stolon_sentinel_leader_count[$interval]) and on(instance) stolon_cluster_identifier{cluster_name=\"$cluster\"}",
+          "expr": "increase(stolon_sentinel_leader_count[$interval]) and on(instance) stolon_cluster_identifier{cluster_name=\"$cluster\", component=\"sentinel\"}",
           "format": "time_series",
           "hide": false,
           "intervalFactor": 1,
@@ -404,5 +405,5 @@
   "timezone": "",
   "title": "stolon-sentinel",
   "uid": "34-Tv4WZz",
-  "version": 1
+  "version": 2
 }
