@@ -6,7 +6,7 @@ RUN set -x \
       && cd "${GOPATH}/src/github.com/sorintlab/stolon" \
       && git remote add gocardless https://github.com/gocardless/stolon \
       && git fetch gocardless \
-      && git checkout 35b235b58abc64a3ace7486710b7817f0bf7d06f \
+      && git checkout 82e4cbc238d46a033be6c790552e92da31a5930c \
       && ./build
 
 # GoCardless runs this fork for PgBouncer metrics. We'll likely change this in

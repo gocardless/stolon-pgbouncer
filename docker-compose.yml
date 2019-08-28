@@ -21,7 +21,7 @@ services:
           - etcd-store
 
   sentinel:
-    image: &stolonDevelopmentImage gocardless/stolon-development:2019082701
+    image: &stolonDevelopmentImage gocardless/stolon-development:2019082801
     restart: on-failure
     depends_on:
       - etcd-store
@@ -89,6 +89,20 @@ services:
     depends_on:
       - sentinel
 
+  keeper3:
+    hostname: keeper3
+    image: *stolonDevelopmentImage
+    command:
+      - /stolon-pgbouncer/docker/stolon-development/supervisord-replica.conf
+    restart: on-failure
+    volumes:
+      - keeper3-data:/data
+      - .:/stolon-pgbouncer
+    ports:
+      - "6436:6432"
+    depends_on:
+      - sentinel
+
   prometheus:
     image: prom/prometheus
     volumes:
@@ -126,6 +140,7 @@ volumes:
   keeper0-data:
   keeper1-data:
   keeper2-data:
+  keeper3-data:
   prometheus-data:
   grafana-data:
 
