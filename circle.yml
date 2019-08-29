@@ -46,7 +46,7 @@ jobs:
           git config --global user.email "robot@gocardless.com"
           git config --global user.name "GoCardless Robot"
 
-          if ! git diff --summary; then
+          if ! git diff --exit-code; then
             echo "vendor is out of date, please go mod vendor/tidy!"
             /bin/false
           fi
