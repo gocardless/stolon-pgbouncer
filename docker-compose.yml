@@ -21,7 +21,7 @@ services:
           - etcd-store
 
   sentinel:
-    image: &stolonDevelopmentImage gocardless/stolon-development:2019082701
+    image: &stolonDevelopmentImage gocardless/stolon-development:2019082901
     restart: on-failure
     depends_on:
       - etcd-store
