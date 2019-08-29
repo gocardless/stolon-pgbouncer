@@ -30,7 +30,7 @@ require (
 	github.com/lib/pq v1.1.1 // indirect
 	github.com/oklog/run v1.0.0
 	github.com/onsi/ginkgo v1.9.0
-	github.com/onsi/gomega v1.6.0
+	github.com/onsi/gomega v1.7.0
 	github.com/pkg/errors v0.8.1
 	github.com/prometheus/client_golang v0.9.4
 	github.com/satori/go.uuid v1.2.0
@@ -44,6 +44,7 @@ require (
 	go.uber.org/zap v1.10.0 // indirect
 	golang.org/x/crypto v0.0.0-20190422183909-d864b10871cd // indirect
 	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4 // indirect
+	google.golang.org/appengine v1.4.0 // indirect
 	google.golang.org/genproto v0.0.0-20190327125643-d831d65fe17d // indirect
 	google.golang.org/grpc v1.23.0
 	gopkg.in/yaml.v2 v2.2.2 // indirect
