@@ -29,7 +29,7 @@ require (
 	github.com/jonboulle/clockwork v0.1.0 // indirect
 	github.com/lib/pq v1.1.1 // indirect
 	github.com/oklog/run v1.0.0
-	github.com/onsi/ginkgo v1.9.0
+	github.com/onsi/ginkgo v1.10.0
 	github.com/onsi/gomega v1.6.0
 	github.com/pkg/errors v0.8.1
 	github.com/prometheus/client_golang v0.9.4
