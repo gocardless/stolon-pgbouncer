@@ -26,10 +26,7 @@ FROM gocardless/stolon-pgbouncer-base:2019082901
 
 RUN set -x \
       && apt-get update -y \
-      && apt-get install --no-install-recommends -y curl etcd-client supervisor postgresql-11 \
-      && curl -fsL https://github.com/sorintlab/stolon/releases/download/v0.13.0/stolon-v0.13.0-linux-amd64.tar.gz -o /tmp/stolon.tar.gz \
-      && tar xfvz /tmp/stolon.tar.gz -C /usr/local/bin --wildcards '*/bin/*' --strip-components=2 \
-      && rm -v /tmp/stolon.tar.gz
+      && apt-get install --no-install-recommends -y curl etcd-client supervisor postgresql-11
 
 COPY --from=stolon-fork \
   /go/src/github.com/sorintlab/stolon/bin/stolon-keeper \
