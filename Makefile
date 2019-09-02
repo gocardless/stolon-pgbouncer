@@ -3,9 +3,9 @@ PROJECT=github.com/gocardless/stolon-pgbouncer
 VERSION=$(shell git rev-parse --short HEAD)-dev
 BUILD_COMMAND=go build -ldflags "-X main.Version=$(VERSION)"
 
-BASE_TAG=2019082901
-CIRCLECI_TAG=2019082901
-STOLON_DEVELOPMENT_TAG=2019082901
+BASE_TAG=2019090201
+CIRCLECI_TAG=2019090201
+STOLON_DEVELOPMENT_TAG=2019090201
 
 .PHONY: all darwin linux test clean test-acceptance docker-compose
 
