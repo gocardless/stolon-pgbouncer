@@ -1,6 +1,6 @@
 # In addition to our base install of pgbouncer and postgresql-client, add CI
 # dependencies that we require during our builds.
-FROM gocardless/stolon-pgbouncer-base:2019082901
+FROM gocardless/stolon-pgbouncer-base:2019090201
 
 # General test utilities
 RUN set -x \
@@ -36,12 +36,6 @@ RUN set -x \
       && curl "https://download.docker.com/linux/static/stable/x86_64/docker-17.06.2-ce.tgz" -o /tmp/docker.tar.gz \
       && tar xfvz /tmp/docker.tar.gz -C /usr/local/bin docker/docker --strip-components=1 \
       && rm -v /tmp/docker.tar.gz
-
-# stolonctl is used by the acceptance test
-RUN set -x \
-      && curl -fsL https://github.com/sorintlab/stolon/releases/download/v0.13.0/stolon-v0.13.0-linux-amd64.tar.gz -o /tmp/stolon.tar.gz \
-      && tar xfvz /tmp/stolon.tar.gz -C /usr/local/bin --wildcards '*/bin/*' --strip-components=2 \
-      && rm -v /tmp/stolon.tar.gz
 
 # The acceptance test uses these environment variables
 ENV ETCDCTL_API=3 \
