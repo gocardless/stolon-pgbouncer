@@ -104,6 +104,10 @@ type stolonOptions struct {
 	KeepaliveTimeout time.Duration
 }
 
+func (o *stolonOptions) ClusterdataKey() string {
+	return fmt.Sprintf("%s/%s/clusterdata", o.Prefix, o.ClusterName)
+}
+
 func newStolonOptions(cmd *kingpin.CmdClause) *stolonOptions {
 	opt := &stolonOptions{}
 
@@ -286,7 +290,7 @@ func mainError() error {
 		stopt := withLockStolonOptions
 
 		client := mustStore(stopt)
-		_, key := mustClusterdata(ctx, client, stopt)
+		key := stopt.ClusterdataKey()
 		locker := pkgfailover.NewLock(client, key)
 
 		timeoutCtx, cancel := context.WithTimeout(ctx, *withLockTimeout)
@@ -627,13 +631,13 @@ func versionStanza() string {
 // mustClusterdata leverages the provided stolonOptions and etcd store to fetch
 // clusterdata.
 func mustClusterdata(ctx context.Context, client *clientv3.Client, stopt *stolonOptions) (*stolon.Clusterdata, string) {
-	clusterdataKey := fmt.Sprintf("%s/%s/clusterdata", stopt.Prefix, stopt.ClusterName)
-	clusterdata, err := stolon.GetClusterdata(ctx, client, clusterdataKey)
+	key := stopt.ClusterdataKey()
+	clusterdata, err := stolon.GetClusterdata(ctx, client, key)
 	if err != nil {
 		kingpin.Fatalf("failed to get clusterdata: %s", err)
 	}
 
-	return clusterdata, clusterdataKey
+	return clusterdata, key
 }
 
 // mustFailoverClient dials all the keepers in the clusterdata returning a map of keeper
