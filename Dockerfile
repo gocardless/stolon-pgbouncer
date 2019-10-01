@@ -2,7 +2,7 @@
 # build
 ################################################################################
 
-FROM golang:1.12 AS build
+FROM golang:1.13.1 AS build
 COPY . /go/src/github.com/gocardless/stolon-pgbouncer
 WORKDIR /go/src/github.com/gocardless/stolon-pgbouncer
 
@@ -19,7 +19,7 @@ RUN set -x \
 # release
 ################################################################################
 
-FROM gocardless/stolon-pgbouncer-base:2019090201 AS release
+FROM gocardless/stolon-pgbouncer-base:2019100101 AS release
 COPY --from=build /go/src/github.com/gocardless/stolon-pgbouncer/stolon-pgbouncer /usr/local/bin/stolon-pgbouncer
 USER postgres
 ENTRYPOINT ["/usr/local/bin/stolon-pgbouncer"]
