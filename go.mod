@@ -25,7 +25,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway v1.9.0 // indirect
 	github.com/jackc/fake v0.0.0-20150926172116-812a484cc733 // indirect
-	github.com/jackc/pgx v3.6.0+incompatible
+	github.com/jackc/pgx v3.6.1+incompatible
 	github.com/jonboulle/clockwork v0.1.0 // indirect
 	github.com/lib/pq v1.1.1 // indirect
 	github.com/oklog/run v1.1.0
