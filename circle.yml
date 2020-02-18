@@ -33,24 +33,6 @@ jobs:
             - bin/stolon-pgbouncer.linux_amd64
             - bin/stolon-pgbouncer-acceptance.linux_amd64
 
-  # Dependabot doesn't support vendoring module updates, so we use this CI step
-  # to check we haven't updated our go.sum/go.mod without also vendoring the
-  # dependencies.
-  check-updated-vendor:
-    <<: *docker_build_image
-    steps:
-      - checkout
-      - run: GO111MODULE=on go mod vendor
-      - run: GO111MODULE=on go mod tidy
-      - run: |
-          git config --global user.email "robot@gocardless.com"
-          git config --global user.name "GoCardless Robot"
-
-          if ! git diff --summary; then
-            echo "vendor is out of date, please go mod vendor/tidy!"
-            /bin/false
-          fi
-
   # To understand this test flow, it's important to be aware of the following
   # constraints:
   #
@@ -123,7 +105,6 @@ workflows:
     jobs:
       - unit-integration
       - build
-      - check-updated-vendor
       - acceptance:
           requires:
             - build
