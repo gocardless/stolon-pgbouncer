@@ -3,8 +3,12 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
+	"errors"
 	"fmt"
+	"io/ioutil"
 	stdlog "log"
 	"net"
 	"net/http"
@@ -31,7 +35,7 @@ import (
 	"github.com/coreos/etcd/mvcc/mvccpb"
 	kitlog "github.com/go-kit/kit/log"
 	level "github.com/go-kit/kit/log/level"
-	"github.com/grpc-ecosystem/go-grpc-middleware"
+	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/oklog/run"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -191,6 +195,12 @@ var (
 		},
 		[]string{"keeper"},
 	)
+	storeCertificateExpirySeconds = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "stolon_store_certificate_expiry_seconds",
+			Help: "Time in unix epoch seconds at which the store certificate expires",
+		},
+	)
 )
 
 func init() {
@@ -201,6 +211,7 @@ func init() {
 	prometheus.MustRegister(storeLastUpdateSeconds)
 	prometheus.MustRegister(lastKeeperSeconds)
 	prometheus.MustRegister(lastReloadSeconds)
+	prometheus.MustRegister(storeCertificateExpirySeconds)
 }
 
 type exitError struct {
@@ -706,6 +717,15 @@ func mustTLS(opt *stolonOptions) *tls.Config {
 			kingpin.Fatalf("failed to load client certs: %s", err)
 		}
 
+		expiry, err := parseX509Expiry(opt.CertFile)
+		if err != nil {
+			storeCertificateExpirySeconds.Set(float64(-1))
+		} else {
+			storeCertificateExpirySeconds.Set(
+				float64(expiry.UnixNano()) / 1e9,
+			)
+		}
+
 		cfg.Certificates = []tls.Certificate{*cert}
 	}
 
@@ -721,6 +741,24 @@ func mustTLS(opt *stolonOptions) *tls.Config {
 	cfg.InsecureSkipVerify = opt.SkipTLSVerify
 
 	return cfg
+}
+
+func parseX509Expiry(certFile string) (time.Time, error) {
+	data, err := ioutil.ReadFile(certFile)
+	if err != nil {
+		return time.Now(), err
+	}
+
+	block, _ := pem.Decode(data)
+	if block == nil {
+		return time.Now(), errors.New("failed to decode PEM block from certificate")
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return time.Now(), err
+	}
+
+	return cert.NotAfter, nil
 }
 
 // setupSignalHandler is similar to the community provided functions, but follows a more
