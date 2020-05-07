@@ -1,6 +1,6 @@
 # In addition to our base install of pgbouncer and postgresql-client, add CI
 # dependencies that we require during our builds.
-FROM gocardless/stolon-pgbouncer-base:2019100101
+FROM gocardless/stolon-pgbouncer-base:2020050701
 
 # General test utilities
 RUN set -x \
@@ -12,7 +12,7 @@ RUN set -x \
 ENV GOPATH=/go GOROOT=/usr/local/go PATH=$PATH:/usr/local/go/bin:/go/bin:/usr/sbin
 RUN set -x \
       && mkdir -p /usr/local/go /go \
-      && curl -L https://dl.google.com/go/go1.13.linux-amd64.tar.gz -o /tmp/go.tar.gz \
+      && curl -L https://dl.google.com/go/go1.14.linux-amd64.tar.gz -o /tmp/go.tar.gz \
       && tar xfvz /tmp/go.tar.gz -C /usr/local/go --strip-components=1 \
       && go version \
       && go get -v -u github.com/onsi/ginkgo/ginkgo \

@@ -1,28 +1,29 @@
 # Temporarily use the GoCardless stolon fork to install the keeper. This enables
 # us to verify the metrics we're adding to the binaries.
-FROM golang:1.12 AS stolon-fork
+FROM golang:1.14 AS stolon-fork
 RUN set -x \
       && go get -d -v github.com/sorintlab/stolon/cmd \
       && cd "${GOPATH}/src/github.com/sorintlab/stolon" \
       && git remote add gocardless https://github.com/gocardless/stolon \
       && git fetch gocardless \
-      && git checkout 35b235b58abc64a3ace7486710b7817f0bf7d06f \
+      && git checkout b2e9e04434e0350356e682dc725bb1551b33784a \
       && ./build
 
 # GoCardless runs this fork for PgBouncer metrics. We'll likely change this in
 # future but include it for now so the dashboards in this repo can match what we
 # have deployed internally.
-FROM golang:1.12 AS pgbouncer-exporter-fork
+FROM golang:1.14 AS pgbouncer-exporter-fork
 RUN set -x \
       && go get -d -v github.com/gocardless/pgbouncer_exporter \
       && cd "${GOPATH}/src/github.com/gocardless/pgbouncer_exporter" \
-      && git checkout a4ec94990b18f76dfd872b2a9214e827c52220a5 \
+      && git checkout 7bbdf2573e6b6fe4bc6fe3981173ccd338763771 \
       && make
 
 # In addition to our base install of pgbouncer and postgresql-client, configure
 # all the dependencies we'll need across our docker-compose setup along with
 # convenience env vars to make stolon tooling function correctly.
-FROM gocardless/stolon-pgbouncer-base:2019100101
+FROM gocardless/stolon-pgbouncer-base:2020050701
+ENV DEBIAN_FRONTEND noninteractive
 
 RUN set -x \
       && apt-get update -y \
