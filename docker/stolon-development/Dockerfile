@@ -1,6 +1,6 @@
 # Temporarily use the GoCardless stolon fork to install the keeper. This enables
 # us to verify the metrics we're adding to the binaries.
-FROM golang:1.14 AS stolon-fork
+FROM golang:1.14.2 AS stolon-fork
 RUN set -x \
       && go get -d -v github.com/sorintlab/stolon/cmd \
       && cd "${GOPATH}/src/github.com/sorintlab/stolon" \
@@ -12,7 +12,7 @@ RUN set -x \
 # GoCardless runs this fork for PgBouncer metrics. We'll likely change this in
 # future but include it for now so the dashboards in this repo can match what we
 # have deployed internally.
-FROM golang:1.14 AS pgbouncer-exporter-fork
+FROM golang:1.14.2 AS pgbouncer-exporter-fork
 RUN set -x \
       && go get -d -v github.com/gocardless/pgbouncer_exporter \
       && cd "${GOPATH}/src/github.com/gocardless/pgbouncer_exporter" \
