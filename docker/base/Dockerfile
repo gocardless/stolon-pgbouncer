@@ -1,4 +1,4 @@
-FROM ubuntu:bionic-20190807
+FROM ubuntu:bionic-20200403
 RUN set -x \
       && apt-get update -y \
       && apt-get install -y curl gpg \

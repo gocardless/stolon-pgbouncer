@@ -183,3 +183,61 @@ groups:
             stolon-keeper manages Postgres configuration, along with Postgres
             reload and restarts. This alert is firing when a keeper is reporting
             a required restart that it's been unable to automatically apply.
+
+  - name: stolon-etcd.rules
+    rules:
+      - alert: StolonEtcdClientExpiryImminent
+        # We want to know if we imminently need to roll the client certificates
+        # used by stolon-pgbouncer to access etcd. This will page when a
+        # certificate will expire within 3 days.
+        expr: >
+          count by (cluster_name) (
+            stolon_cluster_identifier * ignoring(cluster_name, component) group_right(cluster_name) (
+              stolon_store_certificate_expiry_seconds - time()
+            ) < (60 * 60 * 24 * 3)
+          )
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: Etcd client certificate will expire imminently
+          description: |
+
+            Our stolon infrastructure accesses etcd using client certs.
+            The validity of these certificates is ending imminently, and should be rolled.
+            If not done, postgres will become unavailable.
+
+      - alert: StolonEtcdClientExpiryUrgent
+        expr: >
+          count by (cluster_name) (
+            stolon_cluster_identifier * ignoring(cluster_name, component) group_right(cluster_name) (
+              stolon_store_certificate_expiry_seconds - time()
+            ) < (60 * 60 * 24 * 14)
+          )
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Etcd client certificate will expire urgently
+          description: |
+
+            Our stolon infrastructure accesses etcd using client certs.
+            The validity of these certificates is ending soon, and should be rolled.
+
+      - alert: StolonEtcdClientExpiryWarning
+        expr: >
+          count by (cluster_name) (
+            stolon_cluster_identifier * ignoring(cluster_name, component) group_right(cluster_name) (
+              stolon_store_certificate_expiry_seconds - time()
+            ) < (60 * 60 * 24 * 28)
+          )
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Etcd client certificate will expire soon
+          description: |
+
+            Our stolon infrastructure accesses etcd using client certs.
+            The validity of these certificates is ending soon, and should be rolled.
+
