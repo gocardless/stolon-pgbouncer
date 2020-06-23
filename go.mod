@@ -29,5 +29,5 @@ require (
 	github.com/satori/go.uuid v1.2.0
 	github.com/shopspring/decimal v0.0.0-20180709203117-cd690d0c9e24 // indirect
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5 // indirect
-	google.golang.org/grpc v1.26.0
+	google.golang.org/grpc v1.30.0
 )
