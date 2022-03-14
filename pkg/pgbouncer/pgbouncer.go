@@ -71,6 +71,14 @@ func (b *PgBouncer) createTemplate() (*template.Template, error) {
 		return nil, errors.Wrap(err, "failed to read PgBouncer config template file")
 	}
 
+	if matched, _ := regexp.Match("ignore_startup_parameters\\s*\\=.+extra_float_digits", configTemplate); !matched {
+		return nil, errors.Errorf(
+			"PgBouncer is misconfigured: expected config file '%s' to define "+
+				"'ignore_startup_paramets' to include 'extra_float_digits'",
+			b.ConfigTemplateFile,
+		)
+	}
+
 	return template.Must(template.New("PgBouncerConfig").Parse(string(configTemplate))), err
 }
 
