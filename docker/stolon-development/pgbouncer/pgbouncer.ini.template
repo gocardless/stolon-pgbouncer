@@ -23,3 +23,4 @@ reserve_pool_size = 5
 log_connections = 1
 log_disconnections = 1
 log_pooler_errors = 1
+ignore_startup_parameters = extra_float_digits
