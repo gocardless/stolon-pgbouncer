@@ -49,6 +49,9 @@ ENV ETCDCTL_API=3 \
 # Cluster data is placed here, and required to be Postgres writeable
 RUN mkdir /data && chown -R postgres:postgres /data
 
+# Cluster WAL data may be placed here, and required to be Postgres writeable
+RUN mkdir /wal && chown -R postgres:postgres /wal
+
 # 5432 => Postgres
 # 6432 => PgBouncer
 # 7432 => stolon-proxy
