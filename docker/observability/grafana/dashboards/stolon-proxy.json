@@ -308,7 +308,7 @@
           "refId": "A"
         }
       ],
-      "title": "Cluster Data Fetch Errors",
+      "title": "Cluster Data Update Errors",
       "type": "timeseries"
     }
   ],
