@@ -55,7 +55,10 @@ services:
     restart: on-failure
     volumes:
       - keeper0-data:/data
+      - keeper0-wal:/wal
       - .:/stolon-pgbouncer
+    environment:
+      - WAL_DIR=/wal
     ports:
       - "6433:6432"
     depends_on:
@@ -69,7 +72,10 @@ services:
     restart: on-failure
     volumes:
       - keeper1-data:/data
+      - keeper1-wal:/wal
       - .:/stolon-pgbouncer
+    environment:
+      - WAL_DIR=/wal
     ports:
       - "6434:6432"
     depends_on:
@@ -126,6 +132,8 @@ volumes:
   keeper0-data:
   keeper1-data:
   keeper2-data:
+  keeper0-wal:
+  keeper1-wal:
   prometheus-data:
   grafana-data:
 
