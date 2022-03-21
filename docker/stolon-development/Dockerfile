@@ -4,7 +4,7 @@ FROM golang:1.17.8 AS stolon-fork
 RUN set -x \
       && git clone https://github.com/gocardless/stolon.git \
       && cd stolon \
-      && git checkout 22e84ba32f1ccc387dd4f1d7c24b4849cdecf4b8 \
+      && git checkout 6841d2f1b9c3a75af9548354713abaccef5fda4a \
       && make all
 
 # GoCardless runs this fork for PgBouncer metrics. We'll likely change this in
