@@ -55,7 +55,8 @@ jobs:
           command: find pkg -type f -name '*.test' -printf "%h %f\n" | xargs -n2 sh -c 'cd $0 && su postgres -c ./$1'
 
   acceptance:
-    machine: true
+    machine:
+      image: ubuntu-2004:202201-02
     working_directory: /home/circleci/stolon-pgbouncer
     steps:
       - checkout
@@ -64,7 +65,7 @@ jobs:
       - run:
           name: Install an up-to-date Docker Compose
           command: |
-            curl -L https://github.com/docker/compose/releases/download/1.24.0/docker-compose-`uname -s`-`uname -m` > ~/docker-compose
+            curl -L https://github.com/docker/compose/releases/download/v2.3.4/docker-compose-`uname -s`-`uname -m` > ~/docker-compose
             chmod +x ~/docker-compose
             sudo mv ~/docker-compose /usr/local/bin/docker-compose
       - run:
