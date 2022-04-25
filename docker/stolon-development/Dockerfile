@@ -21,7 +21,7 @@ RUN set -x \
 # In addition to our base install of pgbouncer and postgresql-client, configure
 # all the dependencies we'll need across our docker-compose setup along with
 # convenience env vars to make stolon tooling function correctly.
-FROM gocardless/stolon-pgbouncer-base:2022030901
+FROM gocardless/stolon-pgbouncer-base:2022042501
 ENV DEBIAN_FRONTEND noninteractive
 
 RUN set -x \
