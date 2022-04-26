@@ -544,6 +544,7 @@ func mainError() error {
 
 			// Track the last reloaded so we can only reload PgBouncer when necessary
 			var lastReloadedAddress string
+			var lastReloadedPort string
 
 			g.Add(
 				func() error {
@@ -569,13 +570,14 @@ func mainError() error {
 
 							master := clusterdata.Master()
 							masterAddress := master.Status.ListenAddress
-							if masterAddress == "" {
+							masterPort := master.Status.Port
+							if masterAddress == "" || masterPort == "" {
 								logger.Log("event", "clusterdata_no_master", "msg", "no master found, not reloading PgBouncer")
 								return nil
 							}
 
 							// Only try reloading PgBouncer if the host has really changed
-							if lastReloadedAddress == masterAddress {
+							if lastReloadedAddress == masterAddress && lastReloadedPort == masterPort {
 								return nil
 							}
 
@@ -585,7 +587,7 @@ func mainError() error {
 							lastKeeperSeconds.WithLabelValues(master.Spec.KeeperUID).SetToCurrentTime()
 
 							logger.Log("event", "generate_configuration", "host", master)
-							if err := pgBouncer.GenerateConfig(masterAddress); err != nil {
+							if err := pgBouncer.GenerateConfig(masterAddress, masterPort); err != nil {
 								return err
 							}
 
@@ -603,6 +605,7 @@ func mainError() error {
 							// Mark what we've reloaded to, so we can avoid unnecessary PgBouncer
 							// reloads in response to the clusterdata (not the master) changing.
 							lastReloadedAddress = masterAddress
+							lastReloadedPort = masterPort
 
 							// We only set this metric when we've successfully reloaded PgBouncer with
 							// the new keeper value. Alerts should detect when this value is stale when

@@ -47,7 +47,7 @@ func (b *PgBouncer) Config() (map[string]string, error) {
 }
 
 // GenerateConfig writes new configuration to PgBouncer.ConfigFile
-func (b *PgBouncer) GenerateConfig(host string) error {
+func (b *PgBouncer) GenerateConfig(host string, port string) error {
 	var configBuffer bytes.Buffer
 	template, err := b.createTemplate()
 
@@ -55,7 +55,10 @@ func (b *PgBouncer) GenerateConfig(host string) error {
 		return err
 	}
 
-	err = template.Execute(&configBuffer, struct{ Host string }{host})
+	err = template.Execute(&configBuffer, struct {
+		Host string
+		Port string
+	}{host, port})
 
 	if err != nil {
 		return errors.Wrap(err, "failed to render PgBouncer config")
@@ -69,6 +72,14 @@ func (b *PgBouncer) createTemplate() (*template.Template, error) {
 
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to read PgBouncer config template file")
+	}
+
+	if matched, _ := regexp.Match("ignore_startup_parameters\\s*\\=.+extra_float_digits", configTemplate); !matched {
+		return nil, errors.Errorf(
+			"PgBouncer is misconfigured: expected config file '%s' to define "+
+				"'ignore_startup_paramets' to include 'extra_float_digits'",
+			b.ConfigTemplateFile,
+		)
 	}
 
 	return template.Must(template.New("PgBouncerConfig").Parse(string(configTemplate))), err

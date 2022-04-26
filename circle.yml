@@ -55,7 +55,8 @@ jobs:
           command: find pkg -type f -name '*.test' -printf "%h %f\n" | xargs -n2 sh -c 'cd $0 && su postgres -c ./$1'
 
   acceptance:
-    machine: true
+    machine:
+      image: ubuntu-2004:202201-02
     working_directory: /home/circleci/stolon-pgbouncer
     steps:
       - checkout
