@@ -14,14 +14,14 @@ services:
     volumes:
       - etcd-store-data:/data
     ports:
-      - "2379:2379"
+      - "127.0.0.1:2379:2379"
     networks:
       default:
         aliases:
           - etcd-store
 
   sentinel:
-    image: &stolonDevelopmentImage gocardless/stolon-development:2020050701
+    image: &stolonDevelopmentImage gocardless/stolon-development:2022042601
     restart: on-failure
     depends_on:
       - etcd-store
@@ -41,7 +41,7 @@ services:
     volumes:
       - .:/stolon-pgbouncer
     ports:
-      - "6432:6432"
+      - "127.0.0.1:6432:6432"
     depends_on:
       - keeper0
       - keeper1
@@ -55,9 +55,12 @@ services:
     restart: on-failure
     volumes:
       - keeper0-data:/data
+      - keeper0-wal:/wal
       - .:/stolon-pgbouncer
+    environment:
+      - WAL_DIR=/wal
     ports:
-      - "6433:6432"
+      - "127.0.0.1:6433:6432"
     depends_on:
       - sentinel
 
@@ -69,9 +72,12 @@ services:
     restart: on-failure
     volumes:
       - keeper1-data:/data
+      - keeper1-wal:/wal
       - .:/stolon-pgbouncer
+    environment:
+      - WAL_DIR=/wal
     ports:
-      - "6434:6432"
+      - "127.0.0.1:6434:6432"
     depends_on:
       - sentinel
 
@@ -85,7 +91,7 @@ services:
       - keeper2-data:/data
       - .:/stolon-pgbouncer
     ports:
-      - "6435:6432"
+      - "127.0.0.1:6435:6432"
     depends_on:
       - sentinel
 
@@ -102,7 +108,7 @@ services:
       - '--web.console.templates=/usr/share/prometheus/consoles'
     restart: always
     ports:
-      - 9090:9090
+      - "127.0.0.1:9090:9090"
 
   grafana:
     image: grafana/grafana
@@ -115,7 +121,7 @@ services:
       - grafana-data:/var/lib/grafana
     user: "472"
     ports:
-      - 3000:3000
+      - "127.0.0.1:3000:3000"
     restart: always
 
 # Persist etcd and keeper data across docker restarts. This enables our cluster
@@ -126,6 +132,8 @@ volumes:
   keeper0-data:
   keeper1-data:
   keeper2-data:
+  keeper0-wal:
+  keeper1-wal:
   prometheus-data:
   grafana-data:
 

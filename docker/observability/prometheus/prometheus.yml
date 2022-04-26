@@ -18,6 +18,12 @@ scrape_configs:
         regex: (.+):\d+
         target_label: instance
         replacement: ${1}
+  - job_name: "stolon-proxy"
+    static_configs:
+      - targets:
+          - "keeper0:8081"
+          - "keeper1:8081"
+          - "keeper2:8081"
   - job_name: "stolon-keeper"
     static_configs:
       - targets:
