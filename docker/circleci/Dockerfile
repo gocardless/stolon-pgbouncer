@@ -1,6 +1,6 @@
 # In addition to our base install of pgbouncer and postgresql-client, add CI
 # dependencies that we require during our builds.
-FROM gocardless/stolon-pgbouncer-base:2022042501
+FROM gocardless/stolon-pgbouncer-base:2022042601
 
 # General test utilities
 RUN set -x \

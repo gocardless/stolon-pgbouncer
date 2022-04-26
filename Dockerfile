@@ -19,7 +19,7 @@ RUN set -x \
 # release
 ################################################################################
 
-FROM gocardless/stolon-pgbouncer-base:2022042501 AS release
+FROM gocardless/stolon-pgbouncer-base:2022042601 AS release
 COPY --from=build /go/src/github.com/gocardless/stolon-pgbouncer/stolon-pgbouncer /usr/local/bin/stolon-pgbouncer
 USER postgres
 ENTRYPOINT ["/usr/local/bin/stolon-pgbouncer"]
