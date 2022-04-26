@@ -176,7 +176,8 @@ func RunAcceptance(ctx context.Context, logger kitlog.Logger) {
 					conn = pgConnect(logger, pgBouncerPorts["keeper0"])
 					bouncer = &pgbouncer.PgBouncer{
 						Executor: &pgbouncer.AuthorizedExecutor{
-							User:      "pgbouncer",
+							User:      "stolon",
+							Password:  "stolonpass",
 							Database:  "pgbouncer",
 							SocketDir: "localhost",
 							Port:      pgBouncerPorts[keeper],
@@ -269,7 +270,7 @@ func pgConnect(logger kitlog.Logger, port string) *pgx.Conn {
 			logger.Log("event", "postgres_poll", "msg", "attempting to connect to PostgreSQL via PgBouncer")
 			cfg, err := pgx.ParseConnectionString(
 				fmt.Sprintf(
-					"user=postgres dbname=postgres host=localhost port=%s "+
+					"user=stolon dbname=postgres password=stolonpass host=localhost port=%s "+
 						"connect_timeout=1 sslmode=disable",
 					port,
 				),

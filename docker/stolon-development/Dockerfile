@@ -4,7 +4,7 @@ FROM golang:1.17.8 AS stolon-fork
 RUN set -x \
       && git clone https://github.com/gocardless/stolon.git \
       && cd stolon \
-      && git checkout 9340cacdde7a28d7df025fb49ac567febbe33530 \
+      && git checkout dba0fe05a317ca9d485b8d15f27ecae1bb39b180 \
       && make all
 
 # GoCardless runs this fork for PgBouncer metrics. We'll likely change this in
@@ -21,7 +21,7 @@ RUN set -x \
 # In addition to our base install of pgbouncer and postgresql-client, configure
 # all the dependencies we'll need across our docker-compose setup along with
 # convenience env vars to make stolon tooling function correctly.
-FROM gocardless/stolon-pgbouncer-base:2022030901
+FROM gocardless/stolon-pgbouncer-base:2022042601
 ENV DEBIAN_FRONTEND noninteractive
 
 RUN set -x \
