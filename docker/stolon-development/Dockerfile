@@ -26,7 +26,8 @@ ENV DEBIAN_FRONTEND noninteractive
 
 RUN set -x \
       && apt-get update -y \
-      && apt-get install --no-install-recommends -y curl etcd-client supervisor postgresql-14
+      && apt-get install --no-install-recommends -y curl etcd-client supervisor postgresql-14 postgresql-11 rsync openssh-server vim net-tools less jq \
+      && apt-get upgrade -y
 
 COPY --from=stolon-fork \
   /go/stolon/bin/stolon-keeper  \
@@ -45,6 +46,10 @@ ENV ETCDCTL_API=3 \
     STORE_ENDPOINTS=etcd-store:2379 \
     STOLONCTL_STORE_ENDPOINTS=etcd-store:2379 \
     STBOUNCER_FAILOVER_TOKEN=failover-token
+
+# enable ssh for tests 
+RUN mkdir -p /run/sshd
+RUN echo 'postgres:test' | chpasswd
 
 # Cluster data is placed here, and required to be Postgres writeable
 RUN mkdir /data && chown -R postgres:postgres /data

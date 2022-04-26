@@ -1,0 +1,22 @@
+2022-04-26T13:37:54.355Z	ERROR	cmd/keeper.go:1425	failed to resync from followed instance	{"error": "sync error: exit status 1"}
+2022-04-26T13:37:59.366Z	ERROR	cmd/keeper.go:1166	db failed to initialize or resync
+2022-04-26T13:37:59.372Z	INFO	cmd/keeper.go:1197	current db UID different than cluster data db UID	{"db": "", "cdDB": "998edb8f"}
+2022-04-26T13:37:59.372Z	INFO	cmd/keeper.go:1356	resyncing the database cluster
+2022-04-26T13:37:59.401Z	INFO	cmd/keeper.go:1381	database cluster not initialized
+2022-04-26T13:37:59.411Z	INFO	cmd/keeper.go:981	syncing from followed db	{"followedDB": "ec00647c", "keeper": "keeper2"}
+2022-04-26T13:37:59.411Z	INFO	postgresql/postgresql.go:1070	running pg_basebackup
+pg_basebackup: initiating base backup, waiting for checkpoint to complete
+WARNING:  skipping special file "./postgresql.auto.conf"
+pg_basebackup: checkpoint completed
+pg_basebackup: write-ahead log start point: 0/10000028 on timeline 1
+pg_basebackup: starting background WAL receiver
+    0/26247 kB (0%), 0/1 tablespace (/data/cluster/postgres/backup_label)
+WARNING:  skipping special file "./postgresql.auto.conf"
+26257/26257 kB (100%), 0/1 tablespace (...uster/postgres/global/pg_control)
+26257/26257 kB (100%), 1/1 tablespace
+pg_basebackup: write-ahead log end point: 0/10000100
+pg_basebackup: waiting for background process to finish streaming ...
+pg_basebackup: syncing data to disk ...
+pg_basebackup: renaming backup_manifest.tmp to backup_manifest
+pg_basebackup: base backup completed
+2022-04-26T13:37:59.709Z	INFO	cmd/keeper.go:987	sync succeeded
