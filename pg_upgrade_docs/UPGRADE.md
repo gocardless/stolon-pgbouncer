@@ -19,8 +19,8 @@ pgbench -h /tmp -i -s 200 example
 /usr/lib/postgresql/14/bin/initdb -D /data/cluster/new/ -E UTF8
 
 // Stop the standby nodes
-docker-compose stop keeper1
-docker-compose stop keeper0
+docker-compose exec keeper0 supervisorctl stop stolon-keeper
+docker-compose exec keeper1 supervisorctl stop stolon-keeper
 
 // upgrade the primary
 supervisorctl stop stolon-keeper
@@ -38,6 +38,8 @@ cp /data/cluster/postgres/pg_hba.conf /data/cluster/postgres/postgresql.conf /da
 
 
 cp /tmp/conf/* /data/cluster/new
+
+// Optional: do the rsync process to see how it works out before moving forward
 
 // Point the node to the new directory / replace existing
 rm -rf /data/cluster/postgres/
@@ -57,18 +59,16 @@ docker-compose start keeper0
 # rsync
 Currently Replicas delete the data directory and take a pg_basebackup regardless of rsync as the major upgrade destroyts replication slots and assigns new UIDs to all nodes in the cluster.
 
-Rsync command
-```
-rsync --archive --delete --hard-links --size-only --no-inc-recursive --human-readable --progress /data/cluster/postgres /data/cluster/new keeper0:/data/cluster
-```
+copy the previous config beforehand.
+
 Also the directory structure on standby should be the same so run below on standby
 ```
 mkdir /data/cluster/new
 chown -R postgres:postgres /data/cluster/new
 ```
+Rsync command (postgres password is "test")
+```
+rsync --archive --delete --hard-links --size-only --no-inc-recursive --human-readable --progress /data/cluster/postgres /data/cluster/new keeper0:/data/cluster
+```
 
-To keep the container running but stopping standby keepers run:
-```
-docker-compose exec keeper0 supervisorctl stop stolon-keeper
-docker-compose exec keeper1 supervisorctl stop stolon-keeper
-```
+Replace the old config in new directory

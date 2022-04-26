@@ -1,0 +1,30 @@
+2022-04-26T14:02:35.397Z	INFO	cmd/keeper.go:625	keeper uid	{"uid": "keeper0"}
+2022-04-26T14:02:35.406Z	ERROR	cmd/keeper.go:776	cannot get configured pg parameters	{"error": "dial unix /tmp/.s.PGSQL.5432: connect: no such file or directory"}
+2022-04-26T14:02:35.411Z	INFO	cmd/keeper.go:1142	no db assigned
+2022-04-26T14:02:37.908Z	ERROR	cmd/keeper.go:776	cannot get configured pg parameters	{"error": "dial unix /tmp/.s.PGSQL.5432: connect: no such file or directory"}
+2022-04-26T14:02:40.410Z	ERROR	cmd/keeper.go:776	cannot get configured pg parameters	{"error": "dial unix /tmp/.s.PGSQL.5432: connect: no such file or directory"}
+2022-04-26T14:02:40.419Z	INFO	cmd/keeper.go:1197	current db UID different than cluster data db UID	{"db": "e2d49aef", "cdDB": "d4f44c33"}
+2022-04-26T14:02:40.419Z	INFO	cmd/keeper.go:1356	resyncing the database cluster
+2022-04-26T14:02:40.499Z	INFO	cmd/keeper.go:981	syncing from followed db	{"followedDB": "82bbc041", "keeper": "keeper2"}
+2022-04-26T14:02:40.499Z	INFO	postgresql/postgresql.go:1070	running pg_basebackup
+pg_basebackup: initiating base backup, waiting for checkpoint to complete
+WARNING:  skipping special file "./postgresql.auto.conf"
+pg_basebackup: checkpoint completed
+pg_basebackup: write-ahead log start point: 0/E000028 on timeline 1
+pg_basebackup: starting background WAL receiver
+    0/26223 kB (0%), 0/1 tablespace (/data/cluster/postgres/backup_label)
+WARNING:  skipping special file "./postgresql.auto.conf"
+26233/26233 kB (100%), 0/1 tablespace (...uster/postgres/global/pg_control)
+26233/26233 kB (100%), 1/1 tablespace
+pg_basebackup: write-ahead log end point: 0/E000100
+pg_basebackup: waiting for background process to finish streaming ...
+pg_basebackup: syncing data to disk ...
+pg_basebackup: renaming backup_manifest.tmp to backup_manifest
+pg_basebackup: base backup completed
+2022-04-26T14:02:40.823Z	INFO	cmd/keeper.go:987	sync succeeded
+2022-04-26T14:02:40.835Z	INFO	postgresql/postgresql.go:950	writing standby signal file
+2022-04-26T14:02:40.836Z	INFO	postgresql/postgresql.go:424	starting database
+2022-04-26 14:02:40 UTC [598]: [1-1] user=,db=,app= LOG:  redirecting log output to logging collector process
+2022-04-26 14:02:40 UTC [598]: [2-1] user=,db=,app= HINT:  Future log output will appear in directory "/var/log/postgresql".
+2022-04-26T14:02:41.109Z	INFO	cmd/keeper.go:1617	our db requested role is standby	{"followedDB": "82bbc041"}
+2022-04-26T14:02:41.109Z	INFO	cmd/keeper.go:1636	already standby
