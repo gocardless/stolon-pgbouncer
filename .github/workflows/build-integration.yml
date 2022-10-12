@@ -1,0 +1,88 @@
+name: gocardless/stolon-pgbouncer/build-integration
+on:
+  push:
+env:
+  DOCKER_PASS: xxxx9e14
+  DOCKER_USER: xxxxdmin
+  GITHUB_TOKEN: xxxx6d08
+jobs:
+  unit-integration:
+    defaults:
+      run:
+        working-directory: "/go/src/github.com/gocardless/stolon-pgbouncer"
+    runs-on: ubuntu-latest
+    container:
+      image: gocardless/stolon-pgbouncer-circleci:2020050701
+      env:
+        PGHOST: 127.0.0.1
+        PGUSER: postgres
+    steps:
+    - uses: actions/checkout@v2
+    - name: Compile ginkgo test suites
+      run: ginkgo build -r -race .
+    - name: Run unit tests
+      run: find pkg -type f -name '*.test' -printf "%h %f\n" | xargs -n2 sh -c 'cd $0 && su postgres -c ./$1'
+  build:
+    defaults:
+      run:
+        working-directory: "/go/src/github.com/gocardless/stolon-pgbouncer"
+    runs-on: ubuntu-latest
+    container:
+      image: gocardless/stolon-pgbouncer-circleci:2020050701
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build test binaries
+      run: make linux
+    - uses: actions/upload-artifact@v2
+      with:
+        path: |-
+          /go/src/github.com/gocardless/stolon-pgbouncer/bin/stolon-pgbouncer.linux_amd64
+          /go/src/github.com/gocardless/stolon-pgbouncer/bin/stolon-pgbouncer-acceptance.linux_amd64
+  acceptance:
+    defaults:
+      run:
+        working-directory: "/home/circleci/stolon-pgbouncer"
+    runs-on: ubuntu-20.04
+    needs:
+    - build
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/download-artifact@v2
+      with:
+        path: "/home/circleci/stolon-pgbouncer"
+    - name: Install an up-to-date Docker Compose
+      run: |-
+        curl -L https://github.com/docker/compose/releases/download/1.24.0/docker-compose-`uname -s`-`uname -m` > ~/docker-compose
+        chmod +x ~/docker-compose
+        sudo mv ~/docker-compose /usr/local/bin/docker-compose
+    - name: Start docker-compose cluster
+      run: docker-compose up -d etcd-store sentinel pgbouncer keeper0 keeper1 keeper2
+    - name: Tail logs from docker-compose
+      run: docker-compose logs -f
+    - name: Run acceptance tests
+      run: bin/stolon-pgbouncer-acceptance.linux_amd64
+  release:
+    if: contains('refs/heads/master', github.ref)
+    defaults:
+      run:
+        working-directory: "/go/src/github.com/gocardless/stolon-pgbouncer"
+    runs-on: ubuntu-latest
+    container:
+      image: gocardless/stolon-pgbouncer-circleci:2020050701
+    needs:
+    - acceptance
+    - unit-integration
+    steps:
+#     # 'setup_remote_docker' was not transformed because there is no suitable equivalent in GitHub Actions
+    - run: docker login -u "$DOCKER_USER" -p "$DOCKER_PASS"
+    - uses: actions/checkout@v2
+    - name: Release
+      run: |-
+        CURRENT_VERSION="v$(cat VERSION)"
+        if [[ $(git tag -l "${CURRENT_VERSION}") == "${CURRENT_VERSION}" ]]; then
+          echo "Version ${CURRENT_VERSION} is already released"
+          exit 0
+        fi
+        git tag "${CURRENT_VERSION}"
+        git push --tags
+        goreleaser --rm-dist
