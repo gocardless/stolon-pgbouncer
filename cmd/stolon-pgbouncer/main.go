@@ -63,13 +63,13 @@ var (
 
 	pauser                     = app.Command("pauser", "Serve the PgBouncer pause API")
 	pauserPgBouncerOptions     = newPgBouncerOptions(pauser)
-	pauserToken                = pauser.Flag("token", "Authentication token for pauser API").Default("").Envar("STBOUNCER_FAILOVER_TOKEN").String()
+	pauserToken                = pauser.Flag("token", "Authentication token for pauser API. Make sure to change the defaults in production environment.").Default("").Envar("STBOUNCER_FAILOVER_TOKEN").String()
 	pauserBindAddress          = pauser.Flag("bind-address", "Listen address for the pauser API").Default(":8080").String()
 	pauserInitialResumeTimeout = pauser.Flag("initial-resume-timeout", "Timeout for initially resuming PgBouncer on start-up").Default("5s").Duration()
 
 	failover                   = app.Command("failover", "Run a zero-downtime failover of the Postgres primary")
 	failoverStolonOptions      = newStolonOptions(failover)
-	failoverToken              = failover.Flag("token", "Authentication token for pauser API").Default("").Envar("STBOUNCER_FAILOVER_TOKEN").String()
+	failoverToken              = failover.Flag("token", "Authentication token for pauser API. Make sure to change the defaults in production environment.").Default("").Envar("STBOUNCER_FAILOVER_TOKEN").String()
 	failoverHealthCheckOnly    = failover.Flag("health-check-only", "Only run the health checks, don't failover").Default("false").Bool()
 	failoverPauserPort         = failover.Flag("pauser-port", "Port on which the pauser APIs are listening").Default("8080").String()
 	failoverHealthCheckTimeout = failover.Flag("health-check-timeout", "Timeout for health checking pause clients").Default("2s").Duration()
@@ -88,7 +88,7 @@ var (
 
 	status              = app.Command("status", "Show information about the current status of the cluster")
 	statusStolonOptions = newStolonOptions(status)
-	statusToken         = status.Flag("token", "Authentication token for pauser API").Default("").Envar("STBOUNCER_FAILOVER_TOKEN").String()
+	statusToken         = status.Flag("token", "Authentication token for pauser API. Make sure to change the defaults in production environment.").Default("").Envar("STBOUNCER_FAILOVER_TOKEN").String()
 	statusPauserPort    = status.Flag("pauser-port", "Port on which the pauser APIs are listening").Default("8080").String()
 	statusTimeout       = status.Flag("timeout", "Timeout for fetching the status").Default("5s").Duration()
 )
